@@ -1,8 +1,9 @@
 fastapi
 uvicorn[standard]
 sqlalchemy
-pydantic
-PyPDF2
-requests
+pydantic==2.4.2
+PyPDF2==3.0.1
+requests==2.31.0
+razorpay==1.4.1
 python-multipart
 psycopg2-binary

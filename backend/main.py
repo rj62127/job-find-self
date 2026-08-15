@@ -6,6 +6,8 @@ import shutil
 import json
 import PyPDF2
 import requests
+import razorpay
+from sqlalchemy import text
 from typing import Optional, List
 
 from database import engine, Base, SessionLocal, JobModel, User
@@ -24,6 +26,18 @@ app.add_middleware(
 UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 Base.metadata.create_all(bind=engine)
+
+try:
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS uploads_remaining INTEGER DEFAULT 1;"))
+except Exception as e:
+    print(f"Migration error: {e}")
+
+RAZORPAY_KEY_ID = os.environ.get("RAZORPAY_KEY_ID", "rzp_test_xxxxxx")
+RAZORPAY_KEY_SECRET = os.environ.get("RAZORPAY_KEY_SECRET", "xxxxxxxxxxxxxx")
+
+razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
+
 
 class Job(BaseModel):
     id: int
@@ -158,7 +172,8 @@ class APIKeys(BaseModel):
 def get_api_keys(current_user: User = Depends(get_current_user)):
     return {
         "gemini_key": current_user.gemini_key or "",
-        "serper_key": current_user.serper_key or ""
+        "serper_key": current_user.serper_key or "",
+        "uploads_remaining": current_user.uploads_remaining
     }
 
 @app.post("/api-keys")
@@ -187,17 +202,35 @@ async def upload_resume(
     
     db = SessionLocal()
     user = db.query(User).filter(User.id == current_user.id).first()
+    
+    # Check if user has personal keys
+    has_personal_keys = bool(user.gemini_key and user.serper_key)
+    
+    # Check upload limits
+    if not has_personal_keys and user.uploads_remaining <= 0:
+        db.close()
+        raise HTTPException(status_code=400, detail="Free trial exhausted! 💎 Upgrade to Premium or add your own API Keys in Settings to continue.")
+        
+    gemini_key = user.gemini_key or os.environ.get("GEMINI_API_KEY")
+    serper_key = user.serper_key or os.environ.get("SERPER_API_KEY")
+    
+    if not gemini_key or not serper_key:
+        db.close()
+        raise HTTPException(status_code=400, detail="Missing API Keys. Please save them in Settings.")
+        
+    # Decrement quota if using global keys
+    if not has_personal_keys:
+        user.uploads_remaining -= 1
+        db.commit()
+        
     db.close()
     
-    if not user or not user.gemini_key or not user.serper_key:
-        raise HTTPException(status_code=400, detail="Missing API Keys. Please save them in Settings first.")
-        
     file_location = f"{UPLOAD_DIR}/{current_user.id}_resume.pdf"
     with open(file_location, "wb+") as file_object:
         shutil.copyfileobj(file.file, file_object)
         
     resume_text = extract_text_from_pdf(file_location)
-    background_tasks.add_task(process_resume_and_jobs, resume_text, current_user.id, user.gemini_key, user.serper_key, x_current_ctc, x_expected_hike)
+    background_tasks.add_task(process_resume_and_jobs, resume_text, current_user.id, gemini_key, serper_key, x_current_ctc, x_expected_hike)
     return {"info": f"Resume uploaded successfully."}
 
 @app.get("/jobs", response_model=List[Job])
@@ -268,11 +301,12 @@ def generate_assets(
     
     try:
         user = db.query(User).filter(User.id == current_user.id).first()
-        if not user or not user.gemini_key:
+        gemini_key = user.gemini_key or os.environ.get("GEMINI_API_KEY")
+        if not gemini_key:
             db.close()
-            raise HTTPException(status_code=400, detail="Please save your Gemini API Key in Settings first.")
+            raise HTTPException(status_code=400, detail="Missing Gemini API Key. Please add it in Settings.")
             
-        raw_response = call_gemini(prompt, user.gemini_key)
+        raw_response = call_gemini(prompt, gemini_key)
         clean_text = raw_response.strip()
         if clean_text.startswith("```json"): clean_text = clean_text[7:-3]
         elif clean_text.startswith("```"): clean_text = clean_text[3:-3]
@@ -290,6 +324,62 @@ def generate_assets(
         db.close()
         print(f"Gen Error: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate assets")
+
+class OrderRequest(BaseModel):
+    plan_id: str
+
+PLANS = {
+    "starter": {"amount": 9900, "uploads": 3},
+    "pro": {"amount": 19900, "uploads": 10},
+    "elite": {"amount": 49900, "uploads": 50}
+}
+
+@app.post("/create-razorpay-order")
+def create_order(req: OrderRequest, current_user: User = Depends(get_current_user)):
+    plan = PLANS.get(req.plan_id)
+    if not plan:
+        raise HTTPException(status_code=400, detail="Invalid plan")
+        
+    order_data = {
+        "amount": plan["amount"],
+        "currency": "INR",
+        "receipt": f"receipt_{current_user.id}_{req.plan_id}"
+    }
+    try:
+        order = razorpay_client.order.create(data=order_data)
+        return {"id": order["id"], "amount": order["amount"], "currency": order["currency"]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class VerifyPayment(BaseModel):
+    razorpay_order_id: str
+    razorpay_payment_id: str
+    razorpay_signature: str
+    plan_id: str
+
+@app.post("/verify-payment")
+def verify_payment(req: VerifyPayment, current_user: User = Depends(get_current_user)):
+    plan = PLANS.get(req.plan_id)
+    if not plan:
+        raise HTTPException(status_code=400, detail="Invalid plan")
+        
+    try:
+        razorpay_client.utility.verify_payment_signature({
+            'razorpay_order_id': req.razorpay_order_id,
+            'razorpay_payment_id': req.razorpay_payment_id,
+            'razorpay_signature': req.razorpay_signature
+        })
+    except Exception as e:
+        raise HTTPException(status_code=400, detail="Payment verification failed")
+        
+    db = SessionLocal()
+    user = db.query(User).filter(User.id == current_user.id).first()
+    user.uploads_remaining += plan["uploads"]
+    db.commit()
+    uploads_left = user.uploads_remaining
+    db.close()
+    
+    return {"message": "Payment verified", "uploads_remaining": uploads_left}
 
 if __name__ == "__main__":
     import uvicorn

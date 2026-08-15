@@ -27,6 +27,7 @@ class User(Base):
     
     gemini_key = Column(String, nullable=True)
     serper_key = Column(String, nullable=True)
+    uploads_remaining = Column(Integer, default=1)
 
     jobs = relationship("JobModel", back_populates="owner")
 

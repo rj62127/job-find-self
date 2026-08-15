@@ -25,6 +25,10 @@ export default function Home() {
   const [geminiKey, setGeminiKey] = useState("");
   const [serperKey, setSerperKey] = useState("");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [showApiHelp, setShowApiHelp] = useState(false);
+  
+  const [uploadsRemaining, setUploadsRemaining] = useState(1);
+  const [isPricingOpen, setIsPricingOpen] = useState(false);
   
   const [jobs, setJobs] = useState<Job[]>([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -51,6 +55,9 @@ export default function Home() {
       fetchApiKeys();
       fetchJobs();
     }
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    document.body.appendChild(script);
   }, [status]);
 
   const fetchApiKeys = async () => {
@@ -63,6 +70,7 @@ export default function Home() {
         const data = await res.json();
         setGeminiKey(data.gemini_key || "");
         setSerperKey(data.serper_key || "");
+        setUploadsRemaining(data.uploads_remaining !== undefined ? data.uploads_remaining : 1);
       }
     } catch (e) {
       console.error("Failed to fetch API keys.", e);
@@ -141,11 +149,66 @@ export default function Home() {
     setIsGenerating(false);
   };
 
+  const handlePayment = async (planId: string) => {
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const orderRes = await fetch(`${API_URL}/create-razorpay-order`, {
+        method: 'POST',
+        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan_id: planId })
+      });
+      const orderData = await orderRes.json();
+
+      const options = {
+        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || "rzp_test_xxxxxx",
+        amount: orderData.amount,
+        currency: orderData.currency,
+        name: "JobSense AI",
+        description: `Premium Plan: ${planId}`,
+        order_id: orderData.id,
+        handler: async function (response: any) {
+          const verifyRes = await fetch(`${API_URL}/verify-payment`, {
+            method: 'POST',
+            headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+              plan_id: planId
+            })
+          });
+          const verifyData = await verifyRes.json();
+          if (verifyRes.ok) {
+            setUploadsRemaining(verifyData.uploads_remaining);
+            setIsPricingOpen(false);
+            setMessage(`Payment Successful! You have ${verifyData.uploads_remaining} uploads remaining.`);
+            setTimeout(() => setMessage(""), 5000);
+          } else {
+            alert("Payment verification failed.");
+          }
+        },
+        prefill: {
+          name: session?.user?.name || "",
+          email: session?.user?.email || ""
+        },
+        theme: {
+          color: "#2563eb"
+        }
+      };
+      const rzp = new (window as any).Razorpay(options);
+      rzp.open();
+    } catch (e) {
+      console.error(e);
+      alert("Error initiating payment");
+    }
+  };
+
   const handleUpload = async (selectedFile: File) => {
     setFile(selectedFile);
-    if (!geminiKey || !serperKey) {
-      setMessage("⚠️ Please set your API keys in settings first.");
-      setIsSettingsOpen(true);
+    
+    if (!geminiKey && !serperKey && uploadsRemaining <= 0) {
+      setMessage("⚠️ Free trial exhausted! Upgrade to Premium or set your API keys.");
+      setIsPricingOpen(true);
       return;
     }
 
@@ -169,6 +232,7 @@ export default function Home() {
 
       if (res.ok) {
         setMessage("Resume uploaded! AI is analyzing. Jobs will appear shortly.");
+        if (!geminiKey && !serperKey) setUploadsRemaining(prev => Math.max(0, prev - 1));
         setTimeout(fetchJobs, 15000);
       } else {
         const err = await res.json();
@@ -258,7 +322,13 @@ export default function Home() {
             <p className="text-lg text-slate-400">Welcome, {session?.user?.name}</p>
           </div>
           
-          <div className="flex gap-4">
+          <div className="flex gap-4 items-center">
+            <div className="bg-slate-800 border border-slate-700 rounded-xl px-4 py-2 flex items-center gap-2">
+              <span className="text-slate-300 font-semibold text-sm">💎 {uploadsRemaining} Uploads</span>
+            </div>
+            <button onClick={() => setIsPricingOpen(true)} className="px-4 py-2 bg-gradient-to-r from-yellow-500 to-amber-600 hover:from-yellow-400 hover:to-amber-500 rounded-xl text-white font-bold shadow-lg transition-all hidden md:block">
+              Upgrade
+            </button>
             <button onClick={() => signOut()} className="px-4 py-2 bg-white/10 hover:bg-white/20 border border-white/10 rounded-xl text-white font-semibold transition-all">
               Sign Out
             </button>
@@ -287,6 +357,76 @@ export default function Home() {
               </div>
             </div>
             <button onClick={saveKeys} className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-semibold">Save Keys</button>
+            
+            <div className="mt-6 pt-6 border-t border-slate-800">
+              <button onClick={() => setShowApiHelp(!showApiHelp)} className="text-blue-400 text-sm font-semibold mb-2 flex items-center gap-2">
+                {showApiHelp ? "▼ Hide API Instructions" : "▶ How to get free API Keys? 💡"}
+              </button>
+              {showApiHelp && (
+                <div className="text-sm text-slate-400 bg-slate-900/50 p-4 rounded-xl border border-slate-700/50">
+                  <h4 className="font-bold text-white mb-2">Gemini API Key (Google AI Studio)</h4>
+                  <ol className="list-decimal ml-4 mb-4 space-y-1">
+                    <li>Go to <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">aistudio.google.com</a></li>
+                    <li>Sign in and click "Create API key"</li>
+                    <li>Copy and paste the key above.</li>
+                  </ol>
+                  <h4 className="font-bold text-white mb-2">Serper API Key (Google Search)</h4>
+                  <ol className="list-decimal ml-4 space-y-1">
+                    <li>Go to <a href="https://serper.dev" target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">serper.dev</a></li>
+                    <li>Sign up for a free account (gives you 2,500 free searches).</li>
+                    <li>Go to "API Key" dashboard, copy and paste it above.</li>
+                  </ol>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {isPricingOpen && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 max-w-4xl w-full relative animate-in zoom-in-95">
+              <div className="flex justify-between items-center mb-8">
+                <h2 className="text-3xl font-extrabold text-white">Upgrade to Premium 💎</h2>
+                <button onClick={() => setIsPricingOpen(false)} className="text-slate-400 hover:text-white text-2xl font-bold">✕</button>
+              </div>
+              <div className="grid md:grid-cols-3 gap-6">
+                <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700 hover:border-blue-500 transition-all flex flex-col">
+                  <h3 className="text-xl font-bold text-white mb-2">Starter</h3>
+                  <div className="text-3xl font-extrabold text-white mb-4">₹99</div>
+                  <ul className="text-slate-400 space-y-3 mb-8 flex-1 text-sm">
+                    <li className="flex items-center gap-2"><span>✅</span> 3 Resume Uploads</li>
+                    <li className="flex items-center gap-2"><span>✅</span> AI Job Matching</li>
+                    <li className="flex items-center gap-2"><span>✅</span> Custom Cover Letters</li>
+                  </ul>
+                  <button onClick={() => handlePayment('starter')} className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl">Buy Now</button>
+                </div>
+                <div className="bg-gradient-to-b from-blue-900/50 to-slate-800 rounded-2xl p-6 border border-blue-500 shadow-xl shadow-blue-900/20 flex flex-col relative transform md:-translate-y-4">
+                  <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-blue-500 text-white px-3 py-1 text-xs font-bold rounded-full whitespace-nowrap">MOST POPULAR</div>
+                  <h3 className="text-xl font-bold text-white mb-2 mt-2">Pro</h3>
+                  <div className="text-4xl font-extrabold text-white mb-4">₹199</div>
+                  <ul className="text-blue-200 space-y-3 mb-8 flex-1 text-sm font-medium">
+                    <li className="flex items-center gap-2"><span>🔥</span> 10 Resume Uploads</li>
+                    <li className="flex items-center gap-2"><span>✅</span> AI Job Matching</li>
+                    <li className="flex items-center gap-2"><span>✅</span> Custom Cover Letters</li>
+                    <li className="flex items-center gap-2"><span>✅</span> Priority Support</li>
+                  </ul>
+                  <button onClick={() => handlePayment('pro')} className="w-full py-3 bg-blue-500 hover:bg-blue-400 text-white font-bold rounded-xl shadow-lg shadow-blue-500/30">Buy Now</button>
+                </div>
+                <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700 hover:border-amber-500 transition-all flex flex-col">
+                  <h3 className="text-xl font-bold text-white mb-2">Elite</h3>
+                  <div className="text-3xl font-extrabold text-white mb-4">₹499</div>
+                  <ul className="text-slate-400 space-y-3 mb-8 flex-1 text-sm">
+                    <li className="flex items-center gap-2"><span>🚀</span> 50 Resume Uploads</li>
+                    <li className="flex items-center gap-2"><span>✅</span> AI Job Matching</li>
+                    <li className="flex items-center gap-2"><span>✅</span> Custom Cover Letters</li>
+                  </ul>
+                  <button onClick={() => handlePayment('elite')} className="w-full py-3 bg-gradient-to-r from-amber-600 to-yellow-600 hover:from-amber-500 hover:to-yellow-500 text-white font-bold rounded-xl">Buy Now</button>
+                </div>
+              </div>
+              <div className="text-center mt-8 text-slate-500 text-sm">
+                Secure payments powered by <b>Razorpay</b>.
+              </div>
+            </div>
           </div>
         )}
 
