@@ -441,6 +441,7 @@ export default function Home() {
                     <li>Go to <a href="https://serper.dev" target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">serper.dev</a></li>
                     <li>Sign up for a free account (gives you 2,500 free searches).</li>
                     <li>Go to "API Key" dashboard, copy and paste it above.</li>
+                  </ol>
                   <h4 className="font-bold text-white mb-2 mt-4">Groq API Key (AI Chat)</h4>
                   <ol className="list-decimal ml-4 space-y-1">
                     <li>Go to <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">console.groq.com</a></li>
