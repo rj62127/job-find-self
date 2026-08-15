@@ -1,0 +1,296 @@
+from fastapi import FastAPI, File, UploadFile, HTTPException, Header, BackgroundTasks, Depends
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+import os
+import shutil
+import json
+import PyPDF2
+import requests
+from typing import Optional, List
+
+from database import engine, Base, SessionLocal, JobModel, User
+from serper_search import search_jobs
+
+app = FastAPI(title="Job Tracking Dashboard API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+Base.metadata.create_all(bind=engine)
+
+class Job(BaseModel):
+    id: int
+    title: str
+    company: str
+    location: str
+    match_score: float
+    portal: str
+    status: str
+    url: str
+    cover_letter: Optional[str] = None
+    application_answers: Optional[str] = None
+    technical_questions: Optional[str] = None
+
+class StatusUpdate(BaseModel):
+    status: str
+
+def get_current_user(
+    x_user_email: Optional[str] = Header(None),
+    x_user_name: Optional[str] = Header(None),
+    x_google_id: Optional[str] = Header(None)
+):
+    if not x_user_email or not x_google_id:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+        
+    db = SessionLocal()
+    user = db.query(User).filter(User.google_id == x_google_id).first()
+    if not user:
+        user = User(google_id=x_google_id, email=x_user_email, name=x_user_name or "Unknown User")
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    db.close()
+    return user
+
+def extract_text_from_pdf(file_path: str) -> str:
+    text = ""
+    try:
+        with open(file_path, "rb") as file:
+            reader = PyPDF2.PdfReader(file)
+            for page in reader.pages:
+                text += page.extract_text() + "\n"
+    except Exception as e:
+        print(f"Error extracting PDF: {e}")
+    return text
+
+def call_gemini(prompt: str, api_key: str) -> str:
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}"
+    headers = {'Content-Type': 'application/json'}
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0.2}
+    }
+    response = requests.post(url, headers=headers, json=payload)
+    if response.status_code != 200:
+        print(f"Gemini API Error: {response.text}")
+    response.raise_for_status()
+    data = response.json()
+    return data['candidates'][0]['content']['parts'][0]['text']
+
+def process_resume_and_jobs(resume_text: str, user_id: int, gemini_key: str, serper_key: str, current_ctc: str, expected_hike: str):
+    try:
+        role_prompt = f"Analyze this resume and return ONLY the primary job title/role this person should apply for (e.g. 'Python Backend Developer', 'Frontend Engineer'). No other text.\nResume: {resume_text[:2000]}"
+        raw_role = call_gemini(role_prompt, gemini_key)
+        target_role = raw_role.replace('\n', ' ').replace('"', '').strip()
+        words = target_role.split()
+        if len(words) > 5:
+            target_role = " ".join(words[:3])
+    except Exception as e:
+        print(f"Failed to extract role: {e}")
+        target_role = "Software Engineer"
+
+    portals_query = "naukri.com OR linkedin.com OR indeed.com"
+    query = f'"{target_role}" {portals_query}'
+    print(f"SERPER QUERY TO SEND: {query}")
+    
+    try:
+        raw_jobs = search_jobs(query, api_key=serper_key, num_results=10)
+    except Exception as e:
+        print(f"Serper API Error: {e}")
+        return
+    
+    ctc_instructions = ""
+    if current_ctc and expected_hike:
+        ctc_instructions = f"""
+    The candidate's Current CTC is {current_ctc} LPA and their Expected Hike is {expected_hike}%. 
+    Calculate their Expected CTC. If any job explicitly mentions a CTC or salary that is strictly LOWER than the Expected CTC, you MUST filter it out (do not include it in the output JSON). 
+    If a job does not mention a salary, assume it is negotiable and include it."""
+
+    prompt = f"""
+    You are an expert technical recruiter. Analyze each job against the resume and calculate a 'Match Score' (0-100).{ctc_instructions}
+    
+    Resume Text: {resume_text[:3000]}
+    Job Postings: {json.dumps(raw_jobs, indent=2)}
+    
+    Return a JSON array of objects: title, company, location, url, portal, description, match_score. Output ONLY valid JSON.
+    """
+    
+    try:
+        raw_response = call_gemini(prompt, gemini_key)
+        clean_text = raw_response.strip()
+        if clean_text.startswith("```json"): clean_text = clean_text[7:-3]
+        elif clean_text.startswith("```"): clean_text = clean_text[3:-3]
+            
+        ai_scored_jobs = json.loads(clean_text)
+        
+        db = SessionLocal()
+        for job_data in ai_scored_jobs:
+            existing = db.query(JobModel).filter(JobModel.url == job_data.get("url"), JobModel.user_id == user_id).first()
+            if not existing:
+                new_job = JobModel(
+                    user_id=user_id,
+                    portal=job_data.get("portal", "Unknown"),
+                    title=job_data.get("title", "Unknown"),
+                    company=job_data.get("company", "Unknown"),
+                    url=job_data.get("url", ""),
+                    description=job_data.get("description", ""),
+                    match_score=float(job_data.get("match_score", 0)),
+                    status="New"
+                )
+                db.add(new_job)
+        db.commit()
+        db.close()
+    except Exception as e:
+        print(f"Gemini processing error: {e}")
+
+class APIKeys(BaseModel):
+    gemini_key: str
+    serper_key: str
+
+@app.get("/api-keys")
+def get_api_keys(current_user: User = Depends(get_current_user)):
+    return {
+        "gemini_key": current_user.gemini_key or "",
+        "serper_key": current_user.serper_key or ""
+    }
+
+@app.post("/api-keys")
+def save_api_keys(keys: APIKeys, current_user: User = Depends(get_current_user)):
+    db = SessionLocal()
+    user = db.query(User).filter(User.id == current_user.id).first()
+    if not user:
+        db.close()
+        raise HTTPException(status_code=404, detail="User not found")
+    user.gemini_key = keys.gemini_key
+    user.serper_key = keys.serper_key
+    db.commit()
+    db.close()
+    return {"message": "API Keys saved successfully"}
+
+@app.post("/upload-resume")
+async def upload_resume(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...), 
+    x_current_ctc: Optional[str] = Header(None),
+    x_expected_hike: Optional[str] = Header(None),
+    current_user: User = Depends(get_current_user)
+):
+    if not file.filename.endswith((".pdf", ".txt")):
+         raise HTTPException(status_code=400, detail="Invalid file type.")
+    
+    db = SessionLocal()
+    user = db.query(User).filter(User.id == current_user.id).first()
+    db.close()
+    
+    if not user or not user.gemini_key or not user.serper_key:
+        raise HTTPException(status_code=400, detail="Missing API Keys. Please save them in Settings first.")
+        
+    file_location = f"{UPLOAD_DIR}/{current_user.id}_resume.pdf"
+    with open(file_location, "wb+") as file_object:
+        shutil.copyfileobj(file.file, file_object)
+        
+    resume_text = extract_text_from_pdf(file_location)
+    background_tasks.add_task(process_resume_and_jobs, resume_text, current_user.id, user.gemini_key, user.serper_key, x_current_ctc, x_expected_hike)
+    return {"info": f"Resume uploaded successfully."}
+
+@app.get("/jobs", response_model=List[Job])
+def get_jobs(current_user: User = Depends(get_current_user)):
+    db = SessionLocal()
+    jobs = db.query(JobModel).filter(JobModel.user_id == current_user.id).order_by(JobModel.match_score.desc()).all()
+    db.close()
+    return [
+        {
+            "id": j.id,
+            "title": j.title,
+            "company": j.company,
+            "location": "Remote", 
+            "match_score": j.match_score,
+            "url": j.url,
+            "portal": j.portal,
+            "status": j.status,
+            "cover_letter": j.cover_letter,
+            "application_answers": j.application_answers,
+            "technical_questions": j.technical_questions
+        } for j in jobs
+    ]
+
+@app.put("/jobs/{job_id}/status")
+def update_job_status(job_id: int, status_update: StatusUpdate, current_user: User = Depends(get_current_user)):
+    db = SessionLocal()
+    job = db.query(JobModel).filter(JobModel.id == job_id, JobModel.user_id == current_user.id).first()
+    if not job:
+        db.close()
+        raise HTTPException(status_code=404, detail="Job not found")
+    job.status = status_update.status
+    db.commit()
+    db.close()
+    return {"message": "Status updated successfully"}
+
+@app.post("/jobs/{job_id}/generate-assets")
+def generate_assets(
+    job_id: int, 
+    current_user: User = Depends(get_current_user)
+):
+    db = SessionLocal()
+    job = db.query(JobModel).filter(JobModel.id == job_id, JobModel.user_id == current_user.id).first()
+    if not job:
+        db.close()
+        raise HTTPException(status_code=404, detail="Job not found")
+        
+    resume_path = f"{UPLOAD_DIR}/{current_user.id}_resume.pdf"
+    if not os.path.exists(resume_path):
+        db.close()
+        raise HTTPException(status_code=400, detail="Please upload your resume first.")
+        
+    resume_text = extract_text_from_pdf(resume_path)
+    
+    prompt = f"""
+    You are an expert career coach and technical interviewer. 
+    1. Write a highly tailored cover letter.
+    2. Answer the question "Why should we hire you?" based on the candidate's resume.
+    3. Provide 3-5 technical interview questions the candidate is likely to be asked for this specific job, along with short suggested answers based on their resume experience.
+    
+    Job Title: {job.title}
+    Company: {job.company}
+    Job Description: {job.description}
+    
+    Resume: {resume_text[:2000]}
+    
+    Return a JSON object: {{"cover_letter": "...", "answers": "...", "technical_questions": "..."}}
+    """
+    
+    try:
+        user = db.query(User).filter(User.id == current_user.id).first()
+        if not user or not user.gemini_key:
+            db.close()
+            raise HTTPException(status_code=400, detail="Please save your Gemini API Key in Settings first.")
+            
+        raw_response = call_gemini(prompt, user.gemini_key)
+        clean_text = raw_response.strip()
+        if clean_text.startswith("```json"): clean_text = clean_text[7:-3]
+        elif clean_text.startswith("```"): clean_text = clean_text[3:-3]
+            
+        data = json.loads(clean_text)
+        job.cover_letter = data.get("cover_letter", "")
+        job.application_answers = data.get("answers", "")
+        job.technical_questions = data.get("technical_questions", "")
+        db.commit()
+        
+        result = {"cover_letter": job.cover_letter, "answers": job.application_answers, "technical_questions": job.technical_questions}
+        db.close()
+        return result
+    except Exception as e:
+        db.close()
+        print(f"Gen Error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate assets")
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
