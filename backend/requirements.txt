@@ -7,3 +7,4 @@ requests==2.31.0
 razorpay==1.4.1
 python-multipart
 psycopg2-binary
+groq

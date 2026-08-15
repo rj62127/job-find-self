@@ -27,6 +27,7 @@ class User(Base):
     
     gemini_key = Column(String, nullable=True)
     serper_key = Column(String, nullable=True)
+    groq_key = Column(String, nullable=True)
     uploads_remaining = Column(Integer, default=1)
 
     jobs = relationship("JobModel", back_populates="owner")
@@ -59,6 +60,10 @@ def run_migrations():
     cursor = conn.cursor()
     try:
         cursor.execute("ALTER TABLE jobs ADD COLUMN technical_questions TEXT")
+    except sqlite3.OperationalError:
+        pass # Column already exists
+    try:
+        cursor.execute("ALTER TABLE users ADD COLUMN groq_key TEXT")
     except sqlite3.OperationalError:
         pass # Column already exists
     conn.commit()

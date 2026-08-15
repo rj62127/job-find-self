@@ -9,6 +9,7 @@ import requests
 import razorpay
 from sqlalchemy import text
 from typing import Optional, List
+from groq import Groq
 
 from database import engine, Base, SessionLocal, JobModel, User
 from serper_search import search_jobs
@@ -30,6 +31,7 @@ Base.metadata.create_all(bind=engine)
 try:
     with engine.begin() as conn:
         conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS uploads_remaining INTEGER DEFAULT 1;"))
+        conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS groq_key VARCHAR;"))
 except Exception as e:
     print(f"Migration error: {e}")
 
@@ -167,12 +169,14 @@ def process_resume_and_jobs(resume_text: str, user_id: int, gemini_key: str, ser
 class APIKeys(BaseModel):
     gemini_key: str
     serper_key: str
+    groq_key: str
 
 @app.get("/api-keys")
 def get_api_keys(current_user: User = Depends(get_current_user)):
     return {
         "gemini_key": current_user.gemini_key or "",
         "serper_key": current_user.serper_key or "",
+        "groq_key": current_user.groq_key or "",
         "uploads_remaining": current_user.uploads_remaining
     }
 
@@ -185,6 +189,7 @@ def save_api_keys(keys: APIKeys, current_user: User = Depends(get_current_user))
         raise HTTPException(status_code=404, detail="User not found")
     user.gemini_key = keys.gemini_key
     user.serper_key = keys.serper_key
+    user.groq_key = keys.groq_key
     db.commit()
     db.close()
     return {"message": "API Keys saved successfully"}
@@ -331,6 +336,58 @@ def generate_assets(
         db.close()
         print(f"Gen Error: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate assets")
+
+class ChatMessage(BaseModel):
+    message: str
+    history: List[dict]
+
+@app.post("/jobs/{job_id}/chat")
+def chat_with_groq(job_id: int, chat_req: ChatMessage, current_user: User = Depends(get_current_user)):
+    db = SessionLocal()
+    user = db.query(User).filter(User.id == current_user.id).first()
+    job = db.query(JobModel).filter(JobModel.id == job_id, JobModel.user_id == current_user.id).first()
+    
+    if not job or not user:
+        db.close()
+        raise HTTPException(status_code=404, detail="Job or User not found")
+        
+    groq_key = user.groq_key or os.environ.get("GROQ_API_KEY")
+    if not groq_key:
+        db.close()
+        raise HTTPException(status_code=400, detail="Missing Groq API Key. Please add it in Settings.")
+        
+    db.close()
+    
+    client = Groq(api_key=groq_key)
+    
+    resume_path = f"{UPLOAD_DIR}/{current_user.id}_resume.pdf"
+    resume_text = extract_text_from_pdf(resume_path) if os.path.exists(resume_path) else ""
+    
+    system_prompt = f"""You are an expert technical interviewer and career coach.
+You are helping the user prepare for an interview for the role of '{job.title}' at '{job.company}'.
+Job Description: {job.description}
+Candidate's Resume: {resume_text[:2000]}
+
+Keep your answers helpful, concise, and highly specific to the job description. Provide actionable advice."""
+
+    messages = [{"role": "system", "content": system_prompt}]
+    for h in chat_req.history:
+        messages.append({"role": h["role"], "content": h["content"]})
+    messages.append({"role": "user", "content": chat_req.message})
+    
+    try:
+        completion = client.chat.completions.create(
+            model="llama3-8b-8192",
+            messages=messages,
+            temperature=0.7,
+            max_tokens=1024,
+            top_p=1,
+            stream=False,
+        )
+        return {"response": completion.choices[0].message.content}
+    except Exception as e:
+        print(f"Groq API Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 class OrderRequest(BaseModel):
     plan_id: str

@@ -25,6 +25,7 @@ export default function Home() {
   
   const [geminiKey, setGeminiKey] = useState("");
   const [serperKey, setSerperKey] = useState("");
+  const [groqKey, setGroqKey] = useState("");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [showApiHelp, setShowApiHelp] = useState(false);
   
@@ -43,6 +44,11 @@ export default function Home() {
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [questionPage, setQuestionPage] = useState(0);
+
+  // Chat state
+  const [chatHistory, setChatHistory] = useState<{role: string, content: string}[]>([]);
+  const [chatMessage, setChatMessage] = useState("");
+  const [isChatting, setIsChatting] = useState(false);
 
   // Helper to get auth headers
   const getAuthHeaders = () => {
@@ -73,6 +79,7 @@ export default function Home() {
         const data = await res.json();
         setGeminiKey(data.gemini_key || "");
         setSerperKey(data.serper_key || "");
+        setGroqKey(data.groq_key || "");
         setUploadsRemaining(data.uploads_remaining !== undefined ? data.uploads_remaining : 1);
       }
     } catch (e) {
@@ -86,7 +93,7 @@ export default function Home() {
       const res = await fetch(`${API_URL}/api-keys`, {
         method: "POST",
         headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gemini_key: geminiKey, serper_key: serperKey })
+        body: JSON.stringify({ gemini_key: geminiKey, serper_key: serperKey, groq_key: groqKey })
       });
       if (res.ok) {
         setIsSettingsOpen(false);
@@ -150,6 +157,38 @@ export default function Home() {
       alert("Failed to generate assets.");
     }
     setIsGenerating(false);
+  };
+
+  const sendChatMessage = async () => {
+    if (!chatMessage.trim() || !selectedJob) return;
+    
+    const newHistory = [...chatHistory, {role: 'user', content: chatMessage}];
+    setChatHistory(newHistory);
+    setChatMessage("");
+    setIsChatting(true);
+    
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const res = await fetch(`${API_URL}/jobs/${selectedJob.id}/chat`, {
+        method: 'POST',
+        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: chatMessage, history: chatHistory.slice(1) })
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        setChatHistory([...newHistory, {role: 'assistant', content: data.response}]);
+      } else {
+        const err = await res.json();
+        alert(err.detail);
+        setChatHistory(newHistory.slice(0, -1));
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Failed to send message.");
+      setChatHistory(newHistory.slice(0, -1));
+    }
+    setIsChatting(false);
   };
 
   const handlePayment = async (planId: string) => {
@@ -275,7 +314,7 @@ export default function Home() {
         </h3>
         <div className="flex flex-col gap-4">
           {columnJobs.map(job => (
-            <div key={job.id} className="bg-slate-800/80 p-4 rounded-xl border border-slate-700 hover:border-blue-500/50 transition-colors cursor-pointer" onClick={() => { setSelectedJob(job); setQuestionPage(0); }}>
+            <div key={job.id} className="bg-slate-800/80 p-4 rounded-xl border border-slate-700 hover:border-blue-500/50 transition-colors cursor-pointer" onClick={() => { setSelectedJob(job); setQuestionPage(0); setChatHistory([{role: 'assistant', content: 'Hi! I am your AI Interview Coach. Ask me anything about this role, or type "Start Mock Interview" to begin!'}]); }}>
               <h4 className="font-semibold text-white text-sm mb-1">{job.title}</h4>
               <p className="text-xs text-slate-400 mb-3">{job.company}</p>
               
@@ -369,7 +408,7 @@ export default function Home() {
 
         {isSettingsOpen && (
           <div className="mb-8 glass-panel p-6 rounded-2xl border-blue-500/30 animate-in slide-in-from-top-4">
-            <div className="grid md:grid-cols-2 gap-6 mb-4">
+            <div className="grid md:grid-cols-3 gap-6 mb-4">
               <div>
                 <label className="block text-sm text-slate-400 mb-2">Gemini API Key</label>
                 <input type="password" value={geminiKey} onChange={(e) => setGeminiKey(e.target.value)} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-4 py-2 text-white" />
@@ -377,6 +416,10 @@ export default function Home() {
               <div>
                 <label className="block text-sm text-slate-400 mb-2">Serper API Key</label>
                 <input type="password" value={serperKey} onChange={(e) => setSerperKey(e.target.value)} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-4 py-2 text-white" />
+              </div>
+              <div>
+                <label className="block text-sm text-slate-400 mb-2">Groq API Key</label>
+                <input type="password" value={groqKey} onChange={(e) => setGroqKey(e.target.value)} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-4 py-2 text-white" />
               </div>
             </div>
             <button onClick={saveKeys} className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-semibold">Save Keys</button>
@@ -398,6 +441,10 @@ export default function Home() {
                     <li>Go to <a href="https://serper.dev" target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">serper.dev</a></li>
                     <li>Sign up for a free account (gives you 2,500 free searches).</li>
                     <li>Go to "API Key" dashboard, copy and paste it above.</li>
+                  <h4 className="font-bold text-white mb-2 mt-4">Groq API Key (AI Chat)</h4>
+                  <ol className="list-decimal ml-4 space-y-1">
+                    <li>Go to <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">console.groq.com</a></li>
+                    <li>Sign up and click "Create API Key". It's free and blazingly fast.</li>
                   </ol>
                 </div>
               )}
@@ -693,6 +740,58 @@ export default function Home() {
                 >
                   {isGenerating ? "Regenerating..." : "🔄 Regenerate All AI Assets"}
                 </button>
+              </div>
+
+              {/* Groq Chat UI */}
+              <div className="mt-8 pt-8 border-t border-slate-800">
+                <h4 className="text-white font-bold mb-4 flex items-center gap-2">
+                  <span className="text-xl">🤖</span> AI Interview Coach (Groq)
+                </h4>
+                
+                <div className="bg-slate-900/50 rounded-xl border border-slate-700/50 overflow-hidden flex flex-col h-96">
+                  <div className="flex-1 p-4 overflow-y-auto kanban-scroll flex flex-col gap-4">
+                    {chatHistory.map((msg, idx) => (
+                      <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`max-w-[85%] rounded-2xl p-3 text-sm ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-br-none' : 'bg-slate-800 text-slate-300 rounded-bl-none border border-slate-700'}`}>
+                          <ReactMarkdown
+                            components={{
+                              p: ({node, ...props}) => <p className="mb-2 last:mb-0" {...props} />,
+                              strong: ({node, ...props}) => <strong className="font-bold text-white" {...props} />
+                            }}
+                          >
+                            {msg.content}
+                          </ReactMarkdown>
+                        </div>
+                      </div>
+                    ))}
+                    {isChatting && (
+                      <div className="flex justify-start">
+                        <div className="bg-slate-800 border border-slate-700 rounded-2xl rounded-bl-none p-4 flex gap-1">
+                          <div className="w-2 h-2 bg-slate-500 rounded-full animate-bounce"></div>
+                          <div className="w-2 h-2 bg-slate-500 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+                          <div className="w-2 h-2 bg-slate-500 rounded-full animate-bounce" style={{animationDelay: '0.4s'}}></div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <div className="p-3 bg-slate-800/80 border-t border-slate-700/50 flex gap-2">
+                    <input 
+                      type="text" 
+                      value={chatMessage}
+                      onChange={e => setChatMessage(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && sendChatMessage()}
+                      placeholder="Ask about the interview..."
+                      className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                    />
+                    <button 
+                      onClick={sendChatMessage}
+                      disabled={isChatting || !chatMessage.trim()}
+                      className="bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 text-white px-4 py-2 rounded-lg font-bold transition-all"
+                    >
+                      Send
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           )}
