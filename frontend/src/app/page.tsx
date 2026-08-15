@@ -464,14 +464,20 @@ export default function Home() {
               </div>
             </div>
             <div className="flex items-center gap-4 mt-2">
-              <label className={`cursor-pointer px-6 py-3 font-bold text-white transition-all rounded-xl ${isUploading ? 'bg-slate-600 pointer-events-none' : 'bg-blue-600 hover:bg-blue-500 shadow-lg shadow-blue-500/30'}`}>
-                <span>{isUploading ? "Processing..." : "Upload Resume"}</span>
-                <input type="file" className="hidden" accept=".pdf,.txt" disabled={isUploading} onChange={(e) => {
-                  const selected = e.target.files?.[0];
-                  if (selected) handleUpload(selected);
-                  e.target.value = '';
-                }}/>
-              </label>
+              {!geminiKey && !serperKey && uploadsRemaining <= 0 ? (
+                <button onClick={() => setIsPricingOpen(true)} className="px-6 py-3 font-bold text-white transition-all rounded-xl bg-slate-700 hover:bg-slate-600 border border-slate-600 shadow-lg">
+                  🔒 Out of Uploads - Upgrade
+                </button>
+              ) : (
+                <label className={`cursor-pointer px-6 py-3 font-bold text-white transition-all rounded-xl ${isUploading ? 'bg-slate-600 pointer-events-none' : 'bg-blue-600 hover:bg-blue-500 shadow-lg shadow-blue-500/30'}`}>
+                  <span>{isUploading ? "Processing..." : "Upload Resume"}</span>
+                  <input type="file" className="hidden" accept=".pdf,.txt" disabled={isUploading} onChange={(e) => {
+                    const selected = e.target.files?.[0];
+                    if (selected) handleUpload(selected);
+                    e.target.value = '';
+                  }}/>
+                </label>
+              )}
               {file && !isUploading && <span className="text-green-400 text-sm font-medium">Loaded: {file.name}</span>}
             </div>
           </div>
