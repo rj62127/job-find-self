@@ -42,6 +42,7 @@ export default function Home() {
   
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [questionPage, setQuestionPage] = useState(0);
 
   // Helper to get auth headers
   const getAuthHeaders = () => {
@@ -274,7 +275,7 @@ export default function Home() {
         </h3>
         <div className="flex flex-col gap-4">
           {columnJobs.map(job => (
-            <div key={job.id} className="bg-slate-800/80 p-4 rounded-xl border border-slate-700 hover:border-blue-500/50 transition-colors cursor-pointer" onClick={() => setSelectedJob(job)}>
+            <div key={job.id} className="bg-slate-800/80 p-4 rounded-xl border border-slate-700 hover:border-blue-500/50 transition-colors cursor-pointer" onClick={() => { setSelectedJob(job); setQuestionPage(0); }}>
               <h4 className="font-semibold text-white text-sm mb-1">{job.title}</h4>
               <p className="text-xs text-slate-400 mb-3">{job.company}</p>
               
@@ -629,20 +630,57 @@ export default function Home() {
                   <h4 className="text-white font-bold mb-3 flex items-center gap-2">
                     <span className="text-xl">🎯</span> Technical Questions
                   </h4>
-                  <div className="bg-slate-900/50 rounded-xl p-6 text-slate-300 text-sm border border-slate-700/50 mb-8 max-h-[600px] overflow-y-auto kanban-scroll">
-                    <ReactMarkdown
-                      components={{
-                        h3: ({node, ...props}) => <h3 className="text-xl font-bold text-white mt-8 mb-3 border-b border-slate-700 pb-2" {...props} />,
-                        h4: ({node, ...props}) => <h4 className="text-lg font-bold text-white mt-4 mb-2" {...props} />,
-                        p: ({node, ...props}) => <p className="mb-4 text-slate-300 leading-relaxed" {...props} />,
-                        ul: ({node, ...props}) => <ul className="list-disc ml-6 mb-4 text-slate-300 space-y-2" {...props} />,
-                        li: ({node, ...props}) => <li className="mb-1" {...props} />,
-                        strong: ({node, ...props}) => <strong className="font-bold text-blue-300" {...props} />,
-                        a: ({node, ...props}) => <a className="text-blue-400 hover:text-blue-300 hover:underline font-semibold" target="_blank" rel="noopener noreferrer" {...props} />
-                      }}
-                    >
-                      {selectedJob.technical_questions}
-                    </ReactMarkdown>
+                  <div className="bg-slate-900/50 rounded-xl p-6 text-slate-300 text-sm border border-slate-700/50 mb-8 max-h-[600px] overflow-y-auto kanban-scroll flex flex-col">
+                    <div className="flex-1">
+                      <ReactMarkdown
+                        components={{
+                          h3: ({node, ...props}) => <h3 className="text-xl font-bold text-white mt-8 mb-3 border-b border-slate-700 pb-2" {...props} />,
+                          h4: ({node, ...props}) => <h4 className="text-lg font-bold text-white mt-4 mb-2" {...props} />,
+                          p: ({node, ...props}) => <p className="mb-4 text-slate-300 leading-relaxed" {...props} />,
+                          ul: ({node, ...props}) => <ul className="list-disc ml-6 mb-4 text-slate-300 space-y-2" {...props} />,
+                          li: ({node, ...props}) => <li className="mb-1" {...props} />,
+                          strong: ({node, ...props}) => <strong className="font-bold text-blue-300" {...props} />,
+                          a: ({node, ...props}) => <a className="text-blue-400 hover:text-blue-300 hover:underline font-semibold" target="_blank" rel="noopener noreferrer" {...props} />
+                        }}
+                      >
+                        {(() => {
+                          const sections = selectedJob.technical_questions.split(/(?=### )/).filter(s => s.trim().length > 0);
+                          const itemsPerPage = 5;
+                          const startIndex = questionPage * itemsPerPage;
+                          return sections.slice(startIndex, startIndex + itemsPerPage).join('\n');
+                        })()}
+                      </ReactMarkdown>
+                    </div>
+
+                    {(() => {
+                      const sections = selectedJob.technical_questions.split(/(?=### )/).filter(s => s.trim().length > 0);
+                      const itemsPerPage = 5;
+                      const totalPages = Math.ceil(sections.length / itemsPerPage);
+                      
+                      if (totalPages <= 1) return null;
+                      
+                      return (
+                        <div className="flex justify-between items-center mt-6 pt-4 border-t border-slate-700">
+                          <button 
+                            onClick={() => setQuestionPage(p => Math.max(0, p - 1))}
+                            disabled={questionPage === 0}
+                            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${questionPage === 0 ? 'bg-slate-800 text-slate-600 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/20'}`}
+                          >
+                            ← Previous
+                          </button>
+                          <span className="text-slate-400 text-sm font-semibold">
+                            Page {questionPage + 1} of {totalPages}
+                          </span>
+                          <button 
+                            onClick={() => setQuestionPage(p => Math.min(totalPages - 1, p + 1))}
+                            disabled={questionPage === totalPages - 1}
+                            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${questionPage === totalPages - 1 ? 'bg-slate-800 text-slate-600 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/20'}`}
+                          >
+                            Next →
+                          </button>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </>
               )}
