@@ -1,5 +1,6 @@
 "use client";
 
+import ReactMarkdown from 'react-markdown';
 import { useState, useEffect } from 'react';
 import { useSession, signIn, signOut } from "next-auth/react";
 
@@ -590,15 +591,37 @@ export default function Home() {
               <h4 className="text-white font-bold mb-3 flex items-center gap-2">
                 <span className="text-xl">📄</span> Custom Cover Letter
               </h4>
-              <div className="bg-slate-950 rounded-xl p-4 text-slate-300 text-sm whitespace-pre-wrap font-mono mb-8 border border-slate-800">
-                {selectedJob.cover_letter}
+              <div className="bg-slate-900/50 rounded-xl p-6 text-slate-300 text-sm border border-slate-700/50 mb-8 max-h-96 overflow-y-auto kanban-scroll">
+                <ReactMarkdown
+                  components={{
+                    h3: ({node, ...props}) => <h3 className="text-xl font-bold text-white mt-6 mb-2" {...props} />,
+                    h4: ({node, ...props}) => <h4 className="text-lg font-bold text-white mt-4 mb-2" {...props} />,
+                    p: ({node, ...props}) => <p className="mb-4 text-slate-300" {...props} />,
+                    ul: ({node, ...props}) => <ul className="list-disc ml-6 mb-4 text-slate-300" {...props} />,
+                    li: ({node, ...props}) => <li className="mb-1" {...props} />,
+                    strong: ({node, ...props}) => <strong className="font-bold text-white" {...props} />
+                  }}
+                >
+                  {selectedJob.cover_letter}
+                </ReactMarkdown>
               </div>
 
               <h4 className="text-white font-bold mb-3 flex items-center gap-2">
                 <span className="text-xl">💡</span> Why should we hire you?
               </h4>
-              <div className="bg-slate-950 rounded-xl p-4 text-slate-300 text-sm whitespace-pre-wrap font-mono border border-slate-800 mb-8">
-                {selectedJob.application_answers}
+              <div className="bg-slate-900/50 rounded-xl p-6 text-slate-300 text-sm border border-slate-700/50 mb-8 max-h-96 overflow-y-auto kanban-scroll">
+                <ReactMarkdown
+                  components={{
+                    h3: ({node, ...props}) => <h3 className="text-xl font-bold text-white mt-6 mb-2" {...props} />,
+                    h4: ({node, ...props}) => <h4 className="text-lg font-bold text-white mt-4 mb-2" {...props} />,
+                    p: ({node, ...props}) => <p className="mb-4 text-slate-300" {...props} />,
+                    ul: ({node, ...props}) => <ul className="list-disc ml-6 mb-4 text-slate-300" {...props} />,
+                    li: ({node, ...props}) => <li className="mb-1" {...props} />,
+                    strong: ({node, ...props}) => <strong className="font-bold text-white" {...props} />
+                  }}
+                >
+                  {selectedJob.application_answers}
+                </ReactMarkdown>
               </div>
 
               {selectedJob.technical_questions && (
@@ -606,8 +629,19 @@ export default function Home() {
                   <h4 className="text-white font-bold mb-3 flex items-center gap-2">
                     <span className="text-xl">🎯</span> Technical Questions
                   </h4>
-                  <div className="bg-slate-950 rounded-xl p-4 text-slate-300 text-sm whitespace-pre-wrap font-mono border border-slate-800 mb-8">
-                    {selectedJob.technical_questions}
+                  <div className="bg-slate-900/50 rounded-xl p-6 text-slate-300 text-sm border border-slate-700/50 mb-8 max-h-[600px] overflow-y-auto kanban-scroll">
+                    <ReactMarkdown
+                      components={{
+                        h3: ({node, ...props}) => <h3 className="text-xl font-bold text-white mt-8 mb-3 border-b border-slate-700 pb-2" {...props} />,
+                        h4: ({node, ...props}) => <h4 className="text-lg font-bold text-white mt-4 mb-2" {...props} />,
+                        p: ({node, ...props}) => <p className="mb-4 text-slate-300 leading-relaxed" {...props} />,
+                        ul: ({node, ...props}) => <ul className="list-disc ml-6 mb-4 text-slate-300 space-y-2" {...props} />,
+                        li: ({node, ...props}) => <li className="mb-1" {...props} />,
+                        strong: ({node, ...props}) => <strong className="font-bold text-blue-300" {...props} />
+                      }}
+                    >
+                      {selectedJob.technical_questions}
+                    </ReactMarkdown>
                   </div>
                 </>
               )}

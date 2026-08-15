@@ -286,9 +286,13 @@ def generate_assets(
     
     prompt = f"""
     You are an expert career coach and technical interviewer. 
-    1. Write a highly tailored cover letter.
-    2. Answer the question "Why should we hire you?" based on the candidate's resume.
-    3. Provide 3-5 technical interview questions the candidate is likely to be asked for this specific job, along with short suggested answers based on their resume experience.
+    Task 1. Write a highly tailored, professional cover letter for the specified job.
+    Task 2. Answer the question "Why should we hire you?" (around 200-300 words) aligning the candidate's resume with the job description.
+    Task 3. Provide 15-20 highly specific interview questions (technical, architectural, and behavioral) that this specific company ({job.company}) is likely to ask based strictly on the Job Description provided. Provide detailed, well-formatted answers (around 150-200 words each) drawing from the candidate's resume to prove their expertise.
+    
+    CRITICAL FORMATTING INSTRUCTIONS:
+    - Use Markdown formatting for all text.
+    - Use headings (###), bold text (**), bullet points, and proper spacing so it looks beautiful on the frontend.
     
     Job Title: {job.title}
     Company: {job.company}
@@ -296,7 +300,7 @@ def generate_assets(
     
     Resume: {resume_text[:2000]}
     
-    Return a JSON object: {{"cover_letter": "...", "answers": "...", "technical_questions": "..."}}
+    Return a valid JSON object: {{"cover_letter": "...", "answers": "...", "technical_questions": "..."}}
     """
     
     try:
