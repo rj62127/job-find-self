@@ -684,6 +684,16 @@ export default function Home() {
                   </div>
                 </>
               )}
+              
+              <div className="mt-8 text-center pt-6 border-t border-slate-800">
+                <button 
+                  onClick={() => generateAssets(selectedJob.id)}
+                  disabled={isGenerating}
+                  className={`px-6 py-2 rounded-xl text-sm font-bold text-white transition-all ${isGenerating ? 'bg-slate-800 text-slate-500' : 'bg-slate-800 hover:bg-slate-700 border border-slate-700 shadow-lg'}`}
+                >
+                  {isGenerating ? "Regenerating..." : "🔄 Regenerate All AI Assets"}
+                </button>
+              </div>
             </div>
           )}
         </div>
