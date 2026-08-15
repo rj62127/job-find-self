@@ -288,11 +288,14 @@ def generate_assets(
     You are an expert career coach and technical interviewer. 
     Task 1. Write a highly tailored, professional cover letter for the specified job.
     Task 2. Answer the question "Why should we hire you?" (around 200-300 words) aligning the candidate's resume with the job description.
-    Task 3. Provide 15-20 highly specific interview questions (technical, architectural, and behavioral) that this specific company ({job.company}) is likely to ask based strictly on the Job Description provided. Provide detailed, well-formatted answers (around 150-200 words each) drawing from the candidate's resume to prove their expertise.
+    Task 3. Provide 30-40 highly specific interview questions (technical, architectural, and behavioral) that this specific company ({job.company}) is likely to ask based strictly on the Job Description provided. Keep the answers concise and impactful.
+    Task 4. Provide a 'DSA Preparation Plan' for this role containing at least 15-20 specific LeetCode problem recommendations relevant to the tech stack. Format the LeetCode problems as real, clickable Markdown links (e.g., [Two Sum](https://leetcode.com/problems/two-sum/)).
     
     CRITICAL FORMATTING INSTRUCTIONS:
     - Use Markdown formatting for all text.
     - Use headings (###), bold text (**), bullet points, and proper spacing so it looks beautiful on the frontend.
+    - Ensure all LeetCode links use the standard Markdown format: [Link Text](URL).
+
     
     Job Title: {job.title}
     Company: {job.company}

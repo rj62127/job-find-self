@@ -637,7 +637,8 @@ export default function Home() {
                         p: ({node, ...props}) => <p className="mb-4 text-slate-300 leading-relaxed" {...props} />,
                         ul: ({node, ...props}) => <ul className="list-disc ml-6 mb-4 text-slate-300 space-y-2" {...props} />,
                         li: ({node, ...props}) => <li className="mb-1" {...props} />,
-                        strong: ({node, ...props}) => <strong className="font-bold text-blue-300" {...props} />
+                        strong: ({node, ...props}) => <strong className="font-bold text-blue-300" {...props} />,
+                        a: ({node, ...props}) => <a className="text-blue-400 hover:text-blue-300 hover:underline font-semibold" target="_blank" rel="noopener noreferrer" {...props} />
                       }}
                     >
                       {selectedJob.technical_questions}
