@@ -24,16 +24,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from crm_routes import router as crm_router
+app.include_router(crm_router, prefix="/api")
+
 UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 Base.metadata.create_all(bind=engine)
 
 try:
     with engine.begin() as conn:
-        conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS uploads_remaining INTEGER DEFAULT 1;"))
-        conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS groq_key VARCHAR;"))
+        pass # Migrations are handled by Alembic now
 except Exception as e:
-    print(f"Migration error: {e}")
+    print(f"Migration warning: {e}")
 
 RAZORPAY_KEY_ID = os.environ.get("RAZORPAY_KEY_ID", "rzp_test_xxxxxx")
 RAZORPAY_KEY_SECRET = os.environ.get("RAZORPAY_KEY_SECRET", "xxxxxxxxxxxxxx")
