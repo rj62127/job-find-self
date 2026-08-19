@@ -10,8 +10,15 @@ if SQLALCHEMY_DATABASE_URL.startswith("postgres://"):
 
 connect_args = {"check_same_thread": False} if SQLALCHEMY_DATABASE_URL.startswith("sqlite") else {}
 
+engine_kwargs: dict = {"connect_args": connect_args}
+if SQLALCHEMY_DATABASE_URL.startswith("postgresql"):
+    engine_kwargs["pool_size"] = 2
+    engine_kwargs["max_overflow"] = 3
+    engine_kwargs["pool_timeout"] = 30
+    engine_kwargs["pool_recycle"] = 1800
+
 engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, connect_args=connect_args
+    SQLALCHEMY_DATABASE_URL, **engine_kwargs
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
