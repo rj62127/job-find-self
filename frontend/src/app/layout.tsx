@@ -16,8 +16,8 @@ import NextAuthProvider from "@/components/SessionProvider";
 import ClientLayoutWrapper from "@/components/ClientLayoutWrapper";
 
 export const metadata: Metadata = {
-  title: "JobTrack CRM",
-  description: "Personal Job Search CRM",
+  title: "JobSense AI",
+  description: "Your intelligent operating system for tracking job applications.",
 };
 
 export default function RootLayout({

@@ -50,12 +50,14 @@ export default function Dashboard() {
 
   if (!session) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[80vh]">
+      <div className="flex flex-col items-center justify-center min-h-screen w-full">
         <div className="w-16 h-16 rounded-2xl bg-blue-600 flex items-center justify-center text-white mb-6 shadow-lg">
           <LayoutDashboard className="w-8 h-8" />
         </div>
-        <h1 className="text-4xl font-bold text-white mb-4">JobTrack CRM</h1>
-        <p className="text-slate-400 mb-8 max-w-md text-center">Your personal operating system for tracking job applications, interviews, and offers.</p>
+        <h1 className="text-4xl md:text-5xl font-extrabold mb-4 tracking-tight text-white">
+          <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300">JobSense AI</span> Tracker
+        </h1>
+        <p className="text-slate-400 mb-8 max-w-md text-center">Your intelligent operating system for tracking job applications, interviews, and offers.</p>
         <Link 
           href="/api/auth/signin" 
           className="px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
