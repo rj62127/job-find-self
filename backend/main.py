@@ -33,16 +33,30 @@ Base.metadata.create_all(bind=engine)
 
 try:
     # Auto-migrate missing columns for the deployed Postgres database
-    columns = [
-        "groq_key", "current_ctc", "expected_ctc", "lwd", 
-        "notice_period", "target_roles", "preferred_locations", "work_preference"
+    user_columns = [
+        "groq_key VARCHAR", "current_ctc VARCHAR", "expected_ctc VARCHAR", "lwd VARCHAR", 
+        "notice_period VARCHAR", "target_roles VARCHAR", "preferred_locations VARCHAR", "work_preference VARCHAR"
     ]
-    for col in columns:
+    for col_def in user_columns:
         try:
             with engine.begin() as conn:
-                conn.execute(text(f"ALTER TABLE users ADD COLUMN {col} VARCHAR"))
+                conn.execute(text(f"ALTER TABLE users ADD COLUMN {col_def}"))
         except Exception:
             pass # Column likely already exists
+            
+    job_columns = [
+        "company_id INTEGER", "recruiter_id INTEGER", "source VARCHAR", "location VARCHAR",
+        "work_type VARCHAR", "status VARCHAR DEFAULT 'New'", "application_date TIMESTAMP",
+        "next_followup_date TIMESTAMP", "notes TEXT", "cover_letter TEXT",
+        "application_answers TEXT", "technical_questions TEXT"
+    ]
+    for col_def in job_columns:
+        try:
+            with engine.begin() as conn:
+                conn.execute(text(f"ALTER TABLE jobs ADD COLUMN {col_def}"))
+        except Exception:
+            pass # Column likely already exists
+            
 except Exception as e:
     print(f"Migration warning: {e}")
 
