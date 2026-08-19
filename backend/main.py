@@ -32,17 +32,17 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 Base.metadata.create_all(bind=engine)
 
 try:
-    with engine.begin() as conn:
-        # Auto-migrate missing columns for the deployed Postgres database
-        columns = [
-            "groq_key", "current_ctc", "expected_ctc", "lwd", 
-            "notice_period", "target_roles", "preferred_locations", "work_preference"
-        ]
-        for col in columns:
-            try:
+    # Auto-migrate missing columns for the deployed Postgres database
+    columns = [
+        "groq_key", "current_ctc", "expected_ctc", "lwd", 
+        "notice_period", "target_roles", "preferred_locations", "work_preference"
+    ]
+    for col in columns:
+        try:
+            with engine.begin() as conn:
                 conn.execute(text(f"ALTER TABLE users ADD COLUMN {col} VARCHAR"))
-            except Exception:
-                pass # Column likely already exists
+        except Exception:
+            pass # Column likely already exists
 except Exception as e:
     print(f"Migration warning: {e}")
 
