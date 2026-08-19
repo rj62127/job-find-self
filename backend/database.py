@@ -8,13 +8,18 @@ SQLALCHEMY_DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./sql_app.db
 if SQLALCHEMY_DATABASE_URL.startswith("postgres://"):
     SQLALCHEMY_DATABASE_URL = SQLALCHEMY_DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-from sqlalchemy.pool import NullPool
+from sqlalchemy.pool import QueuePool
 
 connect_args = {"check_same_thread": False} if SQLALCHEMY_DATABASE_URL.startswith("sqlite") else {}
 
 engine_kwargs: dict = {"connect_args": connect_args}
 if SQLALCHEMY_DATABASE_URL.startswith("postgresql"):
-    engine_kwargs["poolclass"] = NullPool
+    engine_kwargs["poolclass"] = QueuePool
+    engine_kwargs["pool_size"] = 1
+    engine_kwargs["max_overflow"] = 2
+    engine_kwargs["pool_timeout"] = 30
+    engine_kwargs["pool_recycle"] = 300
+    engine_kwargs["pool_pre_ping"] = True
 
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL, **engine_kwargs
