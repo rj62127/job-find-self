@@ -11,6 +11,7 @@ import {
   FileCheck2, 
   CalendarDays, 
   HelpCircle, 
+  CheckSquare,
   Award,
   Settings
 } from 'lucide-react';
@@ -24,7 +25,8 @@ const navItems = [
   { name: 'Follow-ups', href: '/follow-ups', icon: CalendarDays },
   { name: 'Assessments', href: '/assessments', icon: FileCheck2 },
   { name: 'Interviews', href: '/interviews', icon: CalendarDays },
-  { name: 'Interview Q&A', href: '/interview-questions', icon: HelpCircle },
+  { name: 'Questions Vault', href: '/interview-questions', icon: HelpCircle },
+  { name: 'Prep Tracker', href: '/prep-tracker', icon: CheckSquare },
   { name: 'Offers', href: '/offers', icon: Award },
 ];
 

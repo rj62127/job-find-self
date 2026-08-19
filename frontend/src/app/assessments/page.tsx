@@ -18,6 +18,18 @@ export default function AssessmentsPage() {
   const { data: session } = useSession();
   const [assessments, setAssessments] = useState<Assessment[]>([]);
   const [search, setSearch] = useState("");
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [jobs, setJobs] = useState<any[]>([]);
+
+  const [formData, setFormData] = useState({
+    job_id: "",
+    platform: "",
+    name: "",
+    url: "",
+    deadline: "",
+    status: "Pending",
+    score: ""
+  });
 
   const getAuthHeaders = () => {
     return {
@@ -30,15 +42,53 @@ export default function AssessmentsPage() {
   useEffect(() => {
     if (session) {
       fetchAssessments();
+      fetchJobs();
     }
   }, [session]);
+
+  const fetchJobs = async () => {
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const res = await fetch(`${API_URL}/jobs`, { headers: getAuthHeaders() });
+      if (res.ok) setJobs(await res.json());
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   const fetchAssessments = async () => {
     try {
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
       const res = await fetch(`${API_URL}/api/assessments`, { headers: getAuthHeaders() });
+      if (res.ok) setAssessments(await res.json());
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.job_id) return alert("Select a job first");
+    
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const res = await fetch(`${API_URL}/api/assessments`, {
+        method: "POST",
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          job_id: parseInt(formData.job_id),
+          platform: formData.platform,
+          name: formData.name,
+          url: formData.url || null,
+          deadline: formData.deadline || null,
+          status: formData.status,
+          score: formData.score ? parseFloat(formData.score) : null
+        })
+      });
       if (res.ok) {
-        setAssessments(await res.json());
+        setIsModalOpen(false);
+        setFormData({ job_id: "", platform: "", name: "", url: "", deadline: "", status: "Pending", score: "" });
+        fetchAssessments();
       }
     } catch (e) {
       console.error(e);
@@ -57,13 +107,68 @@ export default function AssessmentsPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 relative">
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl animate-in zoom-in-95">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-bold text-white">Add Assessment</h2>
+              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-white">✕</button>
+            </div>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1">Related Job</label>
+                <select value={formData.job_id} onChange={(e) => setFormData({...formData, job_id: e.target.value})} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-white focus:border-blue-500" required>
+                  <option value="">-- Select a Job --</option>
+                  {jobs.map(job => <option key={job.id} value={job.id}>{job.title} at {job.company}</option>)}
+                </select>
+              </div>
+              <div className="flex gap-4">
+                <div className="flex-1">
+                  <label className="block text-sm font-medium text-slate-300 mb-1">Platform</label>
+                  <input type="text" value={formData.platform} onChange={(e) => setFormData({...formData, platform: e.target.value})} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-white focus:border-blue-500" placeholder="e.g. HackerRank" />
+                </div>
+                <div className="flex-1">
+                  <label className="block text-sm font-medium text-slate-300 mb-1">Name / Topic</label>
+                  <input type="text" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-white focus:border-blue-500" placeholder="e.g. Backend OA" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1">Test Link</label>
+                <input type="url" value={formData.url} onChange={(e) => setFormData({...formData, url: e.target.value})} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-white focus:border-blue-500" placeholder="https://" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1">Deadline</label>
+                <input type="date" value={formData.deadline} onChange={(e) => setFormData({...formData, deadline: e.target.value})} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-white focus:border-blue-500" />
+              </div>
+              <div className="flex gap-4">
+                <div className="flex-1">
+                  <label className="block text-sm font-medium text-slate-300 mb-1">Status</label>
+                  <select value={formData.status} onChange={(e) => setFormData({...formData, status: e.target.value})} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-white focus:border-blue-500">
+                    <option value="Pending">Pending</option>
+                    <option value="Passed">Passed</option>
+                    <option value="Failed">Failed</option>
+                  </select>
+                </div>
+                <div className="w-1/3">
+                  <label className="block text-sm font-medium text-slate-300 mb-1">Score</label>
+                  <input type="number" value={formData.score} onChange={(e) => setFormData({...formData, score: e.target.value})} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-white focus:border-blue-500" placeholder="%" />
+                </div>
+              </div>
+              <button type="submit" className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg transition-colors mt-2">
+                Save Assessment
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-white">Online Assessments</h1>
           <p className="text-slate-400 mt-1">Manage coding tests and technical assignments.</p>
         </div>
-        <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium">
+        <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium">
           <Plus className="w-5 h-5" />
           Add Assessment
         </button>
