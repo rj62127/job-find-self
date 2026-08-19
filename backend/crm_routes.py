@@ -282,10 +282,78 @@ def create_manual_job(job: ManualJobCreate, session: Session = Depends(get_db), 
         location=job.location,
         portal=job.portal,
         status=job.status,
-        owner_id=current_user.id,
-        created_at=datetime.utcnow()
+        user_id=current_user.id
     )
     session.add(new_job)
     session.commit()
     session.refresh(new_job)
     return {"message": "Job created manually", "job_id": new_job.id}
+
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+class ChatRequest(BaseModel):
+    messages: List[ChatMessage]
+
+import requests
+
+@router.post("/chat")
+def global_chat(req: ChatRequest, session: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    if not current_user.groq_key:
+        raise HTTPException(status_code=400, detail="Groq API Key not set. Please set it in Settings.")
+    
+    # Simple semantic keyword matching from user's last message
+    last_msg = req.messages[-1].content.lower()
+    
+    # Fetch user jobs
+    jobs = session.query(models.JobModel).filter(models.JobModel.user_id == current_user.id).all()
+    
+    # Find matching jobs (very basic keyword match on title/company)
+    matched_jobs = []
+    for job in jobs:
+        if job.company and job.company.lower() in last_msg:
+            matched_jobs.append(job)
+        elif job.title and any(word in last_msg for word in job.title.lower().split() if len(word) > 4):
+            matched_jobs.append(job)
+            
+    # Remove duplicates
+    matched_jobs = list({j.id: j for j in matched_jobs}.values())
+    
+    context_str = "No specific job found in database matching the query."
+    if matched_jobs:
+        context_str = "User's matching jobs context:\n"
+        for j in matched_jobs[:3]: # Limit to top 3
+            context_str += f"- Job: {j.title} at {j.company}\nDescription: {j.description[:800]}\nStatus: {j.status}\n\n"
+
+    system_prompt = {
+        "role": "system",
+        "content": (
+            "You are JobSense AI, an intelligent assistant helping the user track and prepare for job interviews. "
+            f"{context_str}\n"
+            "Use the provided job context to write cover letters, prepare interview questions, or offer guidance. "
+            "If the user asks for a job not in the context, ask them to clarify the company or job title."
+        )
+    }
+
+    # Prepare messages for Groq
+    groq_msgs = [system_prompt] + [{"role": m.role, "content": m.content} for m in req.messages]
+
+    headers = {
+        "Authorization": f"Bearer {current_user.groq_key}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "model": "llama3-8b-8192",
+        "messages": groq_msgs,
+        "temperature": 0.7
+    }
+
+    resp = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=payload)
+    if resp.status_code != 200:
+        raise HTTPException(status_code=500, detail=f"Groq API error: {resp.text}")
+
+    data = resp.json()
+    reply = data["choices"][0]["message"]["content"]
+    
+    return {"reply": reply}

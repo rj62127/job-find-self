@@ -3,6 +3,7 @@
 import { useSession } from "next-auth/react";
 import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
+import GlobalChatbot from "./GlobalChatbot";
 import { Loader2 } from "lucide-react";
 
 export default function ClientLayoutWrapper({ children }: { children: React.ReactNode }) {
@@ -25,7 +26,7 @@ export default function ClientLayoutWrapper({ children }: { children: React.Reac
   }
 
   return (
-    <div className="flex min-h-screen bg-slate-950">
+    <div className="flex min-h-screen bg-slate-950 relative">
       <Sidebar />
       <div className="flex-1 flex flex-col ml-64">
         <Topbar />
@@ -33,6 +34,7 @@ export default function ClientLayoutWrapper({ children }: { children: React.Reac
           {children}
         </main>
       </div>
+      <GlobalChatbot />
     </div>
   );
 }

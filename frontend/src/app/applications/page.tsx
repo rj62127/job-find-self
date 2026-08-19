@@ -595,9 +595,12 @@ export default function Home() {
                     <a href={job.url} target="_blank" rel="noreferrer" className="block w-full px-4 py-2 bg-purple-600/20 hover:bg-purple-600/40 text-purple-300 rounded-lg text-sm font-semibold border border-purple-500/20 text-center">
                       View & Apply on Site
                     </a>
-                    <button onClick={() => updateJobStatus(job.id, 'Applied')} className="w-full px-4 py-2 bg-blue-600/20 hover:bg-blue-600/40 text-blue-300 rounded-lg text-sm font-semibold border border-blue-500/20">
-                      Move to Kanban (Applied)
-                    </button>
+                    <label className="flex items-center justify-center gap-2 cursor-pointer w-full px-4 py-2 bg-green-600/20 hover:bg-green-600/40 text-green-400 rounded-lg text-sm font-semibold border border-green-500/20 transition-all">
+                      <input type="checkbox" onChange={(e) => {
+                        if(e.target.checked) updateJobStatus(job.id, 'Applied');
+                      }} className="w-4 h-4 rounded text-green-500 border-green-500/50 bg-slate-900 focus:ring-green-500 focus:ring-offset-slate-900" />
+                      Mark as Applied (Checklist)
+                    </label>
                   </div>
                 </div>
               ))}
