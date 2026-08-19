@@ -266,3 +266,26 @@ create_crud_endpoints(router, "/assessments", models.Assessment, AssessmentCreat
 create_crud_endpoints(router, "/interviews", models.Interview, InterviewCreate, InterviewUpdate, InterviewResponse)
 create_crud_endpoints(router, "/interview-questions", models.InterviewQuestion, InterviewQuestionCreate, InterviewQuestionUpdate, InterviewQuestionResponse)
 create_crud_endpoints(router, "/offers", models.Offer, OfferCreate, OfferUpdate, OfferResponse)
+
+class ManualJobCreate(BaseModel):
+    title: str
+    company: str
+    location: str
+    portal: str
+    status: str
+
+@router.post("/jobs/manual")
+def create_manual_job(job: ManualJobCreate, session: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    new_job = models.JobModel(
+        title=job.title,
+        company=job.company,
+        location=job.location,
+        portal=job.portal,
+        status=job.status,
+        owner_id=current_user.id,
+        created_at=datetime.utcnow()
+    )
+    session.add(new_job)
+    session.commit()
+    session.refresh(new_job)
+    return {"message": "Job created manually", "job_id": new_job.id}

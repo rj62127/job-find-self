@@ -38,6 +38,13 @@ export default function Home() {
   const [uploadStep, setUploadStep] = useState(0);
   const [message, setMessage] = useState("");
   const [activeTab, setActiveTab] = useState<"feed" | "kanban">("feed");
+  const [isManualJobModalOpen, setIsManualJobModalOpen] = useState(false);
+  const [manualJobData, setManualJobData] = useState({
+    title: "",
+    company: "",
+    location: "",
+    portal: "Manual"
+  });
   
   const [currentCtc, setCurrentCtc] = useState("");
   const [expectedHike, setExpectedHike] = useState("");
@@ -62,13 +69,42 @@ export default function Home() {
 
   useEffect(() => {
     if (status === "authenticated") {
-      fetchApiKeys();
       fetchJobs();
     }
     const script = document.createElement('script');
     script.src = 'https://checkout.razorpay.com/v1/checkout.js';
     document.body.appendChild(script);
   }, [status]);
+
+  const handleManualJobSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const res = await fetch(`${API_URL}/api/jobs/manual`, {
+        method: "POST",
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: manualJobData.title,
+          company: manualJobData.company,
+          location: manualJobData.location,
+          portal: manualJobData.portal,
+          status: "New"
+        })
+      });
+      if (res.ok) {
+        setIsManualJobModalOpen(false);
+        setManualJobData({ title: "", company: "", location: "", portal: "Manual" });
+        fetchJobs();
+        setMessage("Job added manually!");
+        setTimeout(() => setMessage(""), 3000);
+      } else {
+        alert("Failed to add job.");
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Error adding job.");
+    }
+  };
 
   const fetchApiKeys = async () => {
     try {
@@ -502,12 +538,45 @@ export default function Home() {
           </div>
         )}
 
+        {isManualJobModalOpen && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl animate-in zoom-in-95">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-xl font-bold text-white">Add Job Manually</h2>
+                <button onClick={() => setIsManualJobModalOpen(false)} className="text-slate-400 hover:text-white">✕</button>
+              </div>
+              <form onSubmit={handleManualJobSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">Job Title</label>
+                  <input required type="text" value={manualJobData.title} onChange={e => setManualJobData({...manualJobData, title: e.target.value})} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-white focus:border-blue-500 focus:outline-none" placeholder="e.g. Senior Backend Engineer" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">Company</label>
+                  <input required type="text" value={manualJobData.company} onChange={e => setManualJobData({...manualJobData, company: e.target.value})} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-white focus:border-blue-500 focus:outline-none" placeholder="e.g. Google" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">Location</label>
+                  <input required type="text" value={manualJobData.location} onChange={e => setManualJobData({...manualJobData, location: e.target.value})} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-white focus:border-blue-500 focus:outline-none" placeholder="e.g. Remote, Bangalore" />
+                </div>
+                <button type="submit" className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg transition-colors mt-2">
+                  Save Job
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
+
         <ResumeUpload onUploadSuccess={() => fetchJobs()} />
 
         <section>
-          <div className="flex bg-slate-900/50 p-1 rounded-xl border border-slate-700/50 mb-6 w-fit">
-            <button onClick={() => setActiveTab("feed")} className={`px-6 py-2 rounded-lg font-semibold text-sm ${activeTab === 'feed' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400'}`}>AI Job Feed</button>
-            <button onClick={() => setActiveTab("kanban")} className={`px-6 py-2 rounded-lg font-semibold text-sm ${activeTab === 'kanban' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400'}`}>Kanban Board</button>
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+            <div className="flex bg-slate-900/50 p-1 rounded-xl border border-slate-700/50 w-fit">
+              <button onClick={() => setActiveTab("feed")} className={`px-6 py-2 rounded-lg font-semibold text-sm ${activeTab === 'feed' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400'}`}>AI Job Feed</button>
+              <button onClick={() => setActiveTab("kanban")} className={`px-6 py-2 rounded-lg font-semibold text-sm ${activeTab === 'kanban' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400'}`}>Kanban Board</button>
+            </div>
+            <button onClick={() => setIsManualJobModalOpen(true)} className="px-6 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-white font-semibold transition-all shadow-lg text-sm flex items-center gap-2">
+              <span className="text-lg leading-none">+</span> Add Manual Job
+            </button>
           </div>
           {activeTab === 'feed' ? (
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">

@@ -18,6 +18,16 @@ export default function CommunicationsPage() {
   const { data: session } = useSession();
   const [communications, setCommunications] = useState<Communication[]>([]);
   const [search, setSearch] = useState("");
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [jobs, setJobs] = useState<any[]>([]);
+  
+  // Form State
+  const [formData, setFormData] = useState({
+    job_id: "",
+    type: "Phone Call",
+    notes: "",
+    next_step: ""
+  });
 
   const getAuthHeaders = () => {
     return {
@@ -30,8 +40,19 @@ export default function CommunicationsPage() {
   useEffect(() => {
     if (session) {
       fetchCommunications();
+      fetchJobs();
     }
   }, [session]);
+
+  const fetchJobs = async () => {
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const res = await fetch(`${API_URL}/jobs`, { headers: getAuthHeaders() });
+      if (res.ok) setJobs(await res.json());
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   const fetchCommunications = async () => {
     try {
@@ -45,19 +66,111 @@ export default function CommunicationsPage() {
     }
   };
 
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.job_id) {
+      alert("Please select a job first.");
+      return;
+    }
+    
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const res = await fetch(`${API_URL}/api/communications`, {
+        method: "POST",
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          job_id: parseInt(formData.job_id),
+          date: new Date().toISOString(),
+          type: formData.type,
+          notes: formData.notes,
+          next_step: formData.next_step
+        })
+      });
+      if (res.ok) {
+        setIsModalOpen(false);
+        setFormData({ job_id: "", type: "Phone Call", notes: "", next_step: "" });
+        fetchCommunications();
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const filteredCommunications = communications.filter(c => 
     (c.notes && c.notes.toLowerCase().includes(search.toLowerCase())) ||
     c.type.toLowerCase().includes(search.toLowerCase())
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 relative">
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl animate-in zoom-in-95">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-bold text-white">Log HR Call / Email</h2>
+              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-white">✕</button>
+            </div>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1">Related Job</label>
+                <select 
+                  value={formData.job_id} 
+                  onChange={(e) => setFormData({...formData, job_id: e.target.value})}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500"
+                  required
+                >
+                  <option value="">-- Select a Job --</option>
+                  {jobs.map(job => (
+                    <option key={job.id} value={job.id}>{job.title} at {job.company}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1">Interaction Type</label>
+                <select 
+                  value={formData.type} 
+                  onChange={(e) => setFormData({...formData, type: e.target.value})}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500"
+                >
+                  <option value="Phone Call">Phone Call</option>
+                  <option value="Email">Email</option>
+                  <option value="LinkedIn DM">LinkedIn DM</option>
+                  <option value="In-person">In-person</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1">Notes / Summary</label>
+                <textarea 
+                  value={formData.notes} 
+                  onChange={(e) => setFormData({...formData, notes: e.target.value})}
+                  placeholder="What did you discuss? e.g. HR reached out for a prescreen..."
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500 h-24"
+                ></textarea>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1">Next Step</label>
+                <input 
+                  type="text" 
+                  value={formData.next_step} 
+                  onChange={(e) => setFormData({...formData, next_step: e.target.value})}
+                  placeholder="e.g. Schedule technical round next week"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500"
+                />
+              </div>
+              <button type="submit" className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg transition-colors mt-2">
+                Save Interaction
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-white">Communications & Follow-ups</h1>
           <p className="text-slate-400 mt-1">Track all your emails, LinkedIn messages, and recruiter calls.</p>
         </div>
-        <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium">
+        <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium">
           <Plus className="w-5 h-5" />
           Log Communication
         </button>
