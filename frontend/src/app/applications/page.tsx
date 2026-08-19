@@ -3,6 +3,7 @@
 import ReactMarkdown from 'react-markdown';
 import { useState, useEffect } from 'react';
 import { useSession, signIn, signOut } from "next-auth/react";
+import ResumeUpload from '@/components/ResumeUpload';
 
 interface Job {
   id: number;
@@ -501,71 +502,13 @@ export default function Home() {
           </div>
         )}
 
-        <section className="mb-8 glass-panel p-6 rounded-3xl flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="flex-1 flex flex-col gap-4">
-            <div className="flex gap-4 items-center">
-              <div>
-                <label className="block text-xs text-slate-400 mb-1 ml-1">Current CTC (LPA)</label>
-                <input type="number" placeholder="e.g. 10" value={currentCtc} onChange={(e) => setCurrentCtc(e.target.value)} className="w-32 bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm" />
-              </div>
-              <div>
-                <label className="block text-xs text-slate-400 mb-1 ml-1">Expected Hike (%)</label>
-                <input type="number" placeholder="e.g. 30" value={expectedHike} onChange={(e) => setExpectedHike(e.target.value)} className="w-32 bg-slate-900/50 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm" />
-              </div>
-            </div>
-            <div className="flex items-center gap-4 mt-2">
-              {!geminiKey && !serperKey && uploadsRemaining <= 0 ? (
-                <button onClick={() => setIsPricingOpen(true)} className="px-6 py-3 font-bold text-white transition-all rounded-xl bg-slate-700 hover:bg-slate-600 border border-slate-600 shadow-lg">
-                  🔒 Out of Uploads - Upgrade
-                </button>
-              ) : (
-                <label className={`cursor-pointer px-6 py-3 font-bold text-white transition-all rounded-xl ${isUploading ? 'bg-slate-600 pointer-events-none' : 'bg-blue-600 hover:bg-blue-500 shadow-lg shadow-blue-500/30'}`}>
-                  <span>{isUploading ? "Processing..." : "Upload Resume"}</span>
-                  <input type="file" className="hidden" accept=".pdf,.txt" disabled={isUploading} onChange={(e) => {
-                    const selected = e.target.files?.[0];
-                    if (selected) handleUpload(selected);
-                    e.target.value = '';
-                  }}/>
-                </label>
-              )}
-              {file && !isUploading && <span className="text-green-400 text-sm font-medium">Loaded: {file.name}</span>}
-            </div>
-          </div>
-          
-          <div className="flex bg-slate-900/50 p-1 rounded-xl border border-slate-700/50">
+        <ResumeUpload onUploadSuccess={() => fetchJobs()} />
+
+        <section>
+          <div className="flex bg-slate-900/50 p-1 rounded-xl border border-slate-700/50 mb-6 w-fit">
             <button onClick={() => setActiveTab("feed")} className={`px-6 py-2 rounded-lg font-semibold text-sm ${activeTab === 'feed' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400'}`}>AI Job Feed</button>
             <button onClick={() => setActiveTab("kanban")} className={`px-6 py-2 rounded-lg font-semibold text-sm ${activeTab === 'kanban' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400'}`}>Kanban Board</button>
           </div>
-        </section>
-
-        {isUploading && (
-          <div className="mb-8 glass-panel p-6 rounded-3xl animate-in fade-in zoom-in-95 border-blue-500/30 shadow-lg shadow-blue-900/20">
-            <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-3">
-              <span className="animate-spin text-2xl">⏳</span> AI is doing its magic...
-            </h3>
-            <div className="relative pt-1">
-              <div className="flex mb-4 items-center justify-between text-xs font-semibold">
-                <span className={`px-2 py-1 rounded-full ${uploadStep >= 1 ? 'bg-blue-500/20 text-blue-300' : 'text-slate-500'}`}>1. Uploading</span>
-                <span className={`px-2 py-1 rounded-full ${uploadStep >= 2 ? 'bg-blue-500/20 text-blue-300' : 'text-slate-500'}`}>2. Extracting Resume</span>
-                <span className={`px-2 py-1 rounded-full ${uploadStep >= 3 ? 'bg-blue-500/20 text-blue-300' : 'text-slate-500'}`}>3. AI Analysis</span>
-                <span className={`px-2 py-1 rounded-full ${uploadStep >= 4 ? 'bg-blue-500/20 text-blue-300' : 'text-slate-500'}`}>4. Web Search</span>
-                <span className={`px-2 py-1 rounded-full ${uploadStep >= 5 ? 'bg-blue-500/20 text-blue-300' : 'text-slate-500'}`}>5. Scoring Matches</span>
-              </div>
-              <div className="overflow-hidden h-2 mb-4 text-xs flex rounded bg-slate-800">
-                <div style={{ width: `${uploadStep * 20}%` }} className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-blue-500 transition-all duration-1000 ease-out"></div>
-              </div>
-              <p className="text-slate-400 text-sm text-center animate-pulse mt-4">
-                {uploadStep === 1 && "Securely uploading your document..."}
-                {uploadStep === 2 && "Reading your experience and skills..."}
-                {uploadStep === 3 && "Determining the perfect role for you..."}
-                {uploadStep === 4 && "Scouring job portals (LinkedIn, Naukri) for live openings..."}
-                {uploadStep === 5 && "Calculating personalized match scores... Almost done!"}
-              </p>
-            </div>
-          </div>
-        )}
-
-        <section>
           {activeTab === 'feed' ? (
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
               {jobs.filter(j => j.status === 'New').map((job) => (

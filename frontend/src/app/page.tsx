@@ -4,6 +4,7 @@ import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { Briefcase, Building2, CalendarDays, Award, ArrowRight, PlusCircle, LayoutDashboard } from "lucide-react";
 import { useEffect, useState } from "react";
+import ResumeUpload from "@/components/ResumeUpload";
 
 export default function Dashboard() {
   const { data: session } = useSession();
@@ -71,6 +72,9 @@ export default function Dashboard() {
         <h1 className="text-2xl font-bold text-white">Welcome back, {session.user?.name?.split(' ')[0]}!</h1>
         <p className="text-slate-400 mt-1">Here's your job search overview for today.</p>
       </div>
+
+      {/* AI Resume Upload Section */}
+      <ResumeUpload onUploadSuccess={() => fetchJobs()} />
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
