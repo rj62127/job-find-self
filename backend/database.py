@@ -44,6 +44,7 @@ class User(Base):
     gemini_key = Column(String, nullable=True)
     serper_key = Column(String, nullable=True)
     groq_key = Column(String, nullable=True)
+    apify_key = Column(String, nullable=True)
     uploads_remaining = Column(Integer, default=1)
 
     # JobTrack CRM Profile settings

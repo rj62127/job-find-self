@@ -34,7 +34,7 @@ Base.metadata.create_all(bind=engine)
 try:
     # Auto-migrate missing columns for the deployed Postgres database
     user_columns = [
-        "groq_key VARCHAR", "current_ctc VARCHAR", "expected_ctc VARCHAR", "lwd VARCHAR", 
+        "groq_key VARCHAR", "apify_key VARCHAR", "current_ctc VARCHAR", "expected_ctc VARCHAR", "lwd VARCHAR", 
         "notice_period VARCHAR", "target_roles VARCHAR", "preferred_locations VARCHAR", "work_preference VARCHAR"
     ]
     for col_def in user_columns:
@@ -125,7 +125,9 @@ def call_gemini(prompt: str, api_key: str) -> str:
     data = response.json()
     return data['candidates'][0]['content']['parts'][0]['text']
 
-def process_resume_and_jobs(resume_text: str, user_id: int, gemini_key: str, serper_key: str, current_ctc: str, expected_hike: str):
+from apify_search import run_apify_scraper
+
+def process_resume_and_jobs(resume_text: str, user_id: int, gemini_key: str, serper_key: str, current_ctc: str, expected_hike: str, apify_key: str = None):
     try:
         role_prompt = f"Analyze this resume and return ONLY the primary job title/role this person should apply for (e.g. 'Python Backend Developer', 'Frontend Engineer'). No other text.\nResume: {resume_text[:2000]}"
         raw_role = call_gemini(role_prompt, gemini_key)
@@ -137,7 +139,8 @@ def process_resume_and_jobs(resume_text: str, user_id: int, gemini_key: str, ser
         print(f"Failed to extract role: {e}")
         target_role = "Software Engineer"
 
-    portals_query = "naukri.com OR linkedin.com OR indeed.com"
+    # Expanded Job Search across multiple portals and ATS systems
+    portals_query = "naukri.com OR linkedin.com OR indeed.com OR cutshort.io OR instahyre.com OR hirist.tech OR greenhouse.io OR lever.co OR ashbyhq.com OR workday.com"
     query = f'"{target_role}" {portals_query}'
     print(f"SERPER QUERY TO SEND: {query}")
     
@@ -190,11 +193,41 @@ def process_resume_and_jobs(resume_text: str, user_id: int, gemini_key: str, ser
         db.close()
     except Exception as e:
         print(f"Gemini processing error: {e}")
+        
+    # --- APIFY BACKGROUND PROCESSING ---
+    if apify_key:
+        print("Starting Apify Background Scraping...")
+        try:
+            apify_jobs = run_apify_scraper(target_role, apify_key)
+            if apify_jobs:
+                db = SessionLocal()
+                for item in apify_jobs:
+                    url = item.get("url", "")
+                    if not url: continue
+                    existing = db.query(JobModel).filter(JobModel.url == url, JobModel.user_id == user_id).first()
+                    if not existing:
+                        new_job = JobModel(
+                            user_id=user_id,
+                            portal="Apify",
+                            title=item.get("title", "Unknown Title"),
+                            company=item.get("company", "Unknown Company"),
+                            url=url,
+                            description=item.get("description", ""),
+                            match_score=85.0, # Approximate high score for targeted scraped jobs
+                            status="New"
+                        )
+                        db.add(new_job)
+                db.commit()
+                db.close()
+                print(f"Apify added {len(apify_jobs)} deep-scraped jobs.")
+        except Exception as e:
+            print(f"Apify execution failed: {e}")
 
 class APIKeys(BaseModel):
     gemini_key: str
     serper_key: str
     groq_key: str
+    apify_key: str
 
 @app.get("/api-keys")
 def get_api_keys(current_user: User = Depends(get_current_user)):
@@ -202,6 +235,7 @@ def get_api_keys(current_user: User = Depends(get_current_user)):
         "gemini_key": current_user.gemini_key or "",
         "serper_key": current_user.serper_key or "",
         "groq_key": current_user.groq_key or "",
+        "apify_key": current_user.apify_key or "",
         "uploads_remaining": current_user.uploads_remaining
     }
 
@@ -215,6 +249,7 @@ def save_api_keys(keys: APIKeys, current_user: User = Depends(get_current_user))
     user.gemini_key = keys.gemini_key
     user.serper_key = keys.serper_key
     user.groq_key = keys.groq_key
+    user.apify_key = keys.apify_key
     db.commit()
     db.close()
     return {"message": "API Keys saved successfully"}
@@ -260,7 +295,7 @@ async def upload_resume(
         shutil.copyfileobj(file.file, file_object)
         
     resume_text = extract_text_from_pdf(file_location)
-    background_tasks.add_task(process_resume_and_jobs, resume_text, current_user.id, gemini_key, serper_key, x_current_ctc, x_expected_hike)
+    background_tasks.add_task(process_resume_and_jobs, resume_text, current_user.id, gemini_key, serper_key, x_current_ctc, x_expected_hike, user.apify_key)
     return {"info": f"Resume uploaded successfully."}
 
 @app.get("/jobs", response_model=List[Job])

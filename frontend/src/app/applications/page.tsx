@@ -27,6 +27,7 @@ export default function Home() {
   const [geminiKey, setGeminiKey] = useState("");
   const [serperKey, setSerperKey] = useState("");
   const [groqKey, setGroqKey] = useState("");
+  const [apifyKey, setApifyKey] = useState("");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [showApiHelp, setShowApiHelp] = useState(false);
   
@@ -117,6 +118,7 @@ export default function Home() {
         setGeminiKey(data.gemini_key || "");
         setSerperKey(data.serper_key || "");
         setGroqKey(data.groq_key || "");
+        setApifyKey(data.apify_key || "");
         setUploadsRemaining(data.uploads_remaining !== undefined ? data.uploads_remaining : 1);
       }
     } catch (e) {
@@ -130,7 +132,7 @@ export default function Home() {
       const res = await fetch(`${API_URL}/api-keys`, {
         method: "POST",
         headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gemini_key: geminiKey, serper_key: serperKey, groq_key: groqKey })
+        body: JSON.stringify({ gemini_key: geminiKey, serper_key: serperKey, groq_key: groqKey, apify_key: apifyKey })
       });
       if (res.ok) {
         setIsSettingsOpen(false);
@@ -457,6 +459,10 @@ export default function Home() {
               <div>
                 <label className="block text-sm text-slate-400 mb-2">Groq API Key</label>
                 <input type="password" value={groqKey} onChange={(e) => setGroqKey(e.target.value)} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-4 py-2 text-white" />
+              </div>
+              <div>
+                <label className="block text-sm text-slate-400 mb-2">Apify API Key</label>
+                <input type="password" value={apifyKey} onChange={(e) => setApifyKey(e.target.value)} className="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-4 py-2 text-white" />
               </div>
             </div>
             <button onClick={saveKeys} className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-semibold">Save Keys</button>
