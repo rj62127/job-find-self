@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { CheckSquare, Square, Save, Loader2, Table2, Plus, Trash2, X } from "lucide-react";
+import { CheckSquare, Square, Save, Loader2, Table2, Plus, Trash2, X, Archive, BrainCircuit, Brain } from "lucide-react";
 
 interface FeedbackRow {
   id: string;
@@ -9,6 +9,9 @@ interface FeedbackRow {
   current: string;
   knows: string;
   improvement: string;
+  isCompleted?: boolean;
+  completedAt?: string;
+  location?: string;
 }
 
 const PLAN = [
@@ -172,8 +175,33 @@ export default function PrepTrackerPage() {
   };
   
   const handleAddRow = (dayId: string) => {
-    const newRow: FeedbackRow = { id: Date.now().toString(), topic: "", current: "", knows: "", improvement: "" };
+    const newRow: FeedbackRow = { id: Date.now().toString(), topic: "", current: "", knows: "", improvement: "", isCompleted: false };
     const nextFeedback = { ...feedback, [dayId]: [...(feedback[dayId] || []), newRow] };
+    setFeedback(nextFeedback);
+    persist(checked, nextFeedback, globalNotes);
+  };
+
+  const handleMarkComplete = async (dayId: string, rowId: string) => {
+    const rows = feedback[dayId] || [];
+    let locationStr = "Local Device";
+    try {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      locationStr = tz;
+      // Optional: Add IP fetch for precise city
+      const res = await fetch("https://ipapi.co/json/");
+      const data = await res.json();
+      if (data && data.city && data.country_name) {
+        locationStr = `${data.city}, ${data.country_name}`;
+      }
+    } catch (e) {
+      // Fallback
+    }
+    
+    const now = new Date().toLocaleString();
+    const updatedRows = rows.map(r => 
+      r.id === rowId ? { ...r, isCompleted: true, completedAt: now, location: locationStr } : r
+    );
+    const nextFeedback = { ...feedback, [dayId]: updatedRows };
     setFeedback(nextFeedback);
     persist(checked, nextFeedback, globalNotes);
   };
@@ -332,6 +360,69 @@ export default function PrepTrackerPage() {
         </div>
       </section>
 
+      {/* MASTER KNOWLEDGE VAULT */}
+      <section className="bg-slate-900 border border-slate-700 rounded-2xl overflow-hidden mt-8">
+        <div className="p-6 border-b border-slate-800 flex items-center justify-between bg-gradient-to-r from-blue-900/20 to-purple-900/20">
+          <div>
+            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+              <Archive className="w-6 h-6 text-emerald-400" />
+              Master Knowledge Vault
+            </h2>
+            <p className="text-sm text-slate-400 mt-1">
+              Your long-term memory archive. All topics you've mastered are stored here safely.
+            </p>
+          </div>
+          <button className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white rounded-xl text-sm font-semibold transition-all shadow-lg shadow-purple-500/20">
+            <BrainCircuit className="w-4 h-4" />
+            AI Flashcards (Coming Soon)
+          </button>
+        </div>
+        
+        <div className="p-6 overflow-auto max-h-[500px]">
+          <table className="w-full text-left border-collapse min-w-[800px]">
+            <thead>
+              <tr className="border-b border-slate-800">
+                <th className="pb-3 px-4 text-xs uppercase font-bold tracking-wider text-slate-500 w-1/4">Topic</th>
+                <th className="pb-3 px-4 text-xs uppercase font-bold tracking-wider text-slate-500 w-1/3">What I know</th>
+                <th className="pb-3 px-4 text-xs uppercase font-bold tracking-wider text-slate-500 w-48">Date & Time</th>
+                <th className="pb-3 px-4 text-xs uppercase font-bold tracking-wider text-slate-500">Location / IP Data</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800/50">
+              {Object.values(feedback)
+                .flat()
+                .filter(row => row.isCompleted)
+                .map(row => (
+                  <tr key={row.id} className="hover:bg-slate-800/30 transition-colors">
+                    <td className="p-4 align-top">
+                      <div className="font-semibold text-slate-200">{row.topic}</div>
+                      <div className="text-xs text-amber-400 mt-1 font-mono">Score: {row.current}</div>
+                    </td>
+                    <td className="p-4 align-top text-sm text-slate-400 leading-relaxed">
+                      {row.knows}
+                    </td>
+                    <td className="p-4 align-top text-sm text-slate-300 font-mono">
+                      {row.completedAt}
+                    </td>
+                    <td className="p-4 align-top text-sm text-slate-400 flex items-start gap-2">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 mt-1.5 flex-shrink-0"></span>
+                      {row.location}
+                    </td>
+                  </tr>
+                ))}
+              {Object.values(feedback).flat().filter(row => row.isCompleted).length === 0 && (
+                <tr>
+                  <td colSpan={4} className="py-12 text-center text-slate-500 border border-dashed border-slate-800 rounded-xl">
+                    <Brain className="w-8 h-8 mx-auto mb-3 text-slate-600 opacity-50" />
+                    No topics mastered yet. Check off items in the Day tables to see them here!
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       {/* Feedback Modal */}
       {isModalOpen && selectedDay && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
@@ -362,9 +453,16 @@ export default function PrepTrackerPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/50">
-                    {(feedback[selectedDay] || []).map((row) => (
+                    {(feedback[selectedDay] || []).filter(row => !row.isCompleted).map((row) => (
                       <tr key={row.id} className="group hover:bg-slate-800/20 transition-colors">
-                        <td className="p-2 align-top">
+                        <td className="p-2 align-top relative">
+                          <button 
+                            onClick={() => handleMarkComplete(selectedDay, row.id)}
+                            className="absolute -left-6 top-4 w-5 h-5 rounded border border-slate-600 hover:border-emerald-500 hover:bg-emerald-500/20 flex items-center justify-center transition-colors group/check"
+                            title="Mark as Mastered (Move to Vault)"
+                          >
+                            <CheckSquare className="w-3 h-3 text-emerald-500 opacity-0 group-hover/check:opacity-100" />
+                          </button>
                           <textarea 
                             value={row.topic} 
                             onChange={(e) => handleUpdateRow(selectedDay, row.id, "topic", e.target.value)}
@@ -411,9 +509,9 @@ export default function PrepTrackerPage() {
                   </tbody>
                 </table>
                 
-                {(feedback[selectedDay] || []).length === 0 && (
+                {(feedback[selectedDay] || []).filter(row => !row.isCompleted).length === 0 && (
                   <div className="text-center py-12 text-slate-500 border border-dashed border-slate-800 rounded-xl my-4">
-                    No feedback added yet. Add a topic to start tracking your progress!
+                    No active feedback added yet. Add a topic to start tracking your progress!
                   </div>
                 )}
                 
