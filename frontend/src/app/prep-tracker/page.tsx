@@ -1,7 +1,15 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { CheckSquare, Square, Save, Loader2 } from "lucide-react";
+import { CheckSquare, Square, Save, Loader2, Table2, Plus, Trash2, X } from "lucide-react";
+
+interface FeedbackRow {
+  id: string;
+  topic: string;
+  current: string;
+  knows: string;
+  improvement: string;
+}
 
 const PLAN = [
   {
@@ -95,11 +103,15 @@ const STORAGE_KEY = "interview-prep-tracker-v2";
 
 export default function PrepTrackerPage() {
   const [checked, setChecked] = useState<Record<string, boolean>>({});
-  const [notes, setNotes] = useState<Record<string, string>>({});
+  const [feedback, setFeedback] = useState<Record<string, FeedbackRow[]>>({});
   const [globalNotes, setGlobalNotes] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
   const saveTimer = useRef<NodeJS.Timeout | null>(null);
+  
+  // Modal state
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -107,7 +119,7 @@ export default function PrepTrackerPage() {
       if (raw) {
         const data = JSON.parse(raw);
         setChecked(data.checked || {});
-        setNotes(data.notes || {});
+        setFeedback(data.feedback || {});
         setGlobalNotes(data.globalNotes || "");
       }
     } catch (e) {
@@ -116,14 +128,14 @@ export default function PrepTrackerPage() {
     setLoaded(true);
   }, []);
 
-  const persist = useCallback((nextChecked: any, nextNotes: any, nextGlobal: string) => {
+  const persist = useCallback((nextChecked: any, nextFeedback: any, nextGlobal: string) => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     setSaveState("saving");
     saveTimer.current = setTimeout(() => {
       try {
         window.localStorage.setItem(
           STORAGE_KEY,
-          JSON.stringify({ checked: nextChecked, notes: nextNotes, globalNotes: nextGlobal })
+          JSON.stringify({ checked: nextChecked, feedback: nextFeedback, globalNotes: nextGlobal })
         );
         setSaveState("saved");
         setTimeout(() => setSaveState("idle"), 1200);
@@ -137,18 +149,40 @@ export default function PrepTrackerPage() {
     const key = `${dayId}:${idx}`;
     const next = { ...checked, [key]: !checked[key] };
     setChecked(next);
-    persist(next, notes, globalNotes);
-  };
-
-  const updateNote = (dayId: string, val: string) => {
-    const next = { ...notes, [dayId]: val };
-    setNotes(next);
-    persist(checked, next, globalNotes);
+    persist(next, feedback, globalNotes);
   };
 
   const updateGlobalNotes = (val: string) => {
     setGlobalNotes(val);
-    persist(checked, notes, val);
+    persist(checked, feedback, val);
+  };
+  
+  const handleAddRow = (dayId: string) => {
+    const newRow: FeedbackRow = { id: Date.now().toString(), topic: "", current: "", knows: "", improvement: "" };
+    const nextFeedback = { ...feedback, [dayId]: [...(feedback[dayId] || []), newRow] };
+    setFeedback(nextFeedback);
+    persist(checked, nextFeedback, globalNotes);
+  };
+  
+  const handleUpdateRow = (dayId: string, rowId: string, field: keyof FeedbackRow, value: string) => {
+    const rows = feedback[dayId] || [];
+    const updatedRows = rows.map(r => r.id === rowId ? { ...r, [field]: value } : r);
+    const nextFeedback = { ...feedback, [dayId]: updatedRows };
+    setFeedback(nextFeedback);
+    persist(checked, nextFeedback, globalNotes);
+  };
+  
+  const handleDeleteRow = (dayId: string, rowId: string) => {
+    const rows = feedback[dayId] || [];
+    const updatedRows = rows.filter(r => r.id !== rowId);
+    const nextFeedback = { ...feedback, [dayId]: updatedRows };
+    setFeedback(nextFeedback);
+    persist(checked, nextFeedback, globalNotes);
+  };
+  
+  const openModal = (dayId: string) => {
+    setSelectedDay(dayId);
+    setIsModalOpen(true);
   };
 
   if (!loaded) {
@@ -218,12 +252,13 @@ export default function PrepTrackerPage() {
               })}
             </ul>
             
-            <textarea
-              className="w-full h-24 bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-slate-300 focus:outline-none focus:border-blue-500 placeholder:text-slate-600 resize-none"
-              placeholder="Notes — kya reh gaya, kya mushkil laga..."
-              value={notes[day.id] || ""}
-              onChange={(e) => updateNote(day.id, e.target.value)}
-            />
+            <button
+              onClick={() => openModal(day.id)}
+              className="mt-auto w-full py-2.5 px-4 bg-slate-800/50 hover:bg-blue-600/20 border border-slate-700 hover:border-blue-500/50 rounded-xl text-slate-300 hover:text-blue-400 text-sm font-semibold transition-all flex items-center justify-center gap-2 group/btn"
+            >
+              <Table2 className="w-4 h-4 text-slate-500 group-hover/btn:text-blue-400 transition-colors" />
+              Topic Feedback Table
+            </button>
           </section>
         ))}
       </div>
@@ -244,6 +279,113 @@ export default function PrepTrackerPage() {
           {saveState === "saved" && <span className="text-green-400">✓ Saved locally</span>}
         </div>
       </section>
+
+      {/* Feedback Modal */}
+      {isModalOpen && selectedDay && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between p-6 border-b border-slate-800 bg-slate-900/50">
+              <div>
+                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                  <Table2 className="w-5 h-5 text-blue-400" />
+                  Feedback Table: {PLAN.find(d => d.id === selectedDay)?.title}
+                </h2>
+                <p className="text-sm text-slate-400 mt-1">Track topics, your current level, what you know, and what needs improvement.</p>
+              </div>
+              <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white transition-colors">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-auto p-6">
+              <div className="min-w-[800px]">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-700">
+                      <th className="pb-3 px-4 text-sm font-semibold text-slate-400 w-1/5">Topic</th>
+                      <th className="pb-3 px-4 text-sm font-semibold text-slate-400 w-32">Current</th>
+                      <th className="pb-3 px-4 text-sm font-semibold text-slate-400 w-2/5">Kya aata hai (Knowledge)</th>
+                      <th className="pb-3 px-4 text-sm font-semibold text-slate-400 w-2/5">Improvement needed</th>
+                      <th className="pb-3 px-4 w-12"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/50">
+                    {(feedback[selectedDay] || []).map((row) => (
+                      <tr key={row.id} className="group hover:bg-slate-800/20 transition-colors">
+                        <td className="p-2 align-top">
+                          <input 
+                            type="text" 
+                            value={row.topic} 
+                            onChange={(e) => handleUpdateRow(selectedDay, row.id, "topic", e.target.value)}
+                            placeholder="e.g. GIL"
+                            className="w-full bg-transparent border border-transparent hover:border-slate-700 focus:border-blue-500 rounded px-3 py-2 text-sm text-slate-200 outline-none transition-colors font-medium"
+                          />
+                        </td>
+                        <td className="p-2 align-top">
+                          <input 
+                            type="text" 
+                            value={row.current} 
+                            onChange={(e) => handleUpdateRow(selectedDay, row.id, "current", e.target.value)}
+                            placeholder="e.g. 6.5/10"
+                            className="w-full bg-transparent border border-transparent hover:border-slate-700 focus:border-blue-500 rounded px-3 py-2 text-sm text-amber-400 outline-none transition-colors font-mono"
+                          />
+                        </td>
+                        <td className="p-2 align-top">
+                          <textarea 
+                            value={row.knows} 
+                            onChange={(e) => handleUpdateRow(selectedDay, row.id, "knows", e.target.value)}
+                            placeholder="e.g. Basic concept, CPU vs I/O..."
+                            className="w-full bg-transparent border border-transparent hover:border-slate-700 focus:border-blue-500 rounded px-3 py-2 text-sm text-slate-300 outline-none transition-colors resize-none min-h-[60px]"
+                          />
+                        </td>
+                        <td className="p-2 align-top">
+                          <textarea 
+                            value={row.improvement} 
+                            onChange={(e) => handleUpdateRow(selectedDay, row.id, "improvement", e.target.value)}
+                            placeholder="e.g. GIL internals, bytecode..."
+                            className="w-full bg-transparent border border-transparent hover:border-slate-700 focus:border-blue-500 rounded px-3 py-2 text-sm text-slate-300 outline-none transition-colors resize-none min-h-[60px]"
+                          />
+                        </td>
+                        <td className="p-2 align-top text-center pt-4">
+                          <button 
+                            onClick={() => handleDeleteRow(selectedDay, row.id)}
+                            className="text-slate-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
+                            title="Delete Row"
+                          >
+                            <Trash2 className="w-4 h-4 mx-auto" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                
+                {(feedback[selectedDay] || []).length === 0 && (
+                  <div className="text-center py-12 text-slate-500 border border-dashed border-slate-800 rounded-xl my-4">
+                    No feedback added yet. Add a topic to start tracking your progress!
+                  </div>
+                )}
+                
+                <button 
+                  onClick={() => handleAddRow(selectedDay)}
+                  className="mt-4 flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300 font-medium px-4 py-2 hover:bg-blue-500/10 rounded-lg transition-colors"
+                >
+                  <Plus className="w-4 h-4" /> Add Topic
+                </button>
+              </div>
+            </div>
+            
+            <div className="p-4 border-t border-slate-800 bg-slate-900/80 flex justify-end">
+              <button 
+                onClick={() => setIsModalOpen(false)}
+                className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-semibold shadow-lg shadow-blue-500/20 transition-all"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
