@@ -342,10 +342,10 @@ export default function PrepTrackerPage() {
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="border-b border-slate-700">
-                      <th className="pb-3 px-4 text-sm font-semibold text-slate-400 w-1/5">Topic</th>
-                      <th className="pb-3 px-4 text-sm font-semibold text-slate-400 w-32">Current</th>
-                      <th className="pb-3 px-4 text-sm font-semibold text-slate-400 w-2/5">Kya aata hai (Knowledge)</th>
-                      <th className="pb-3 px-4 text-sm font-semibold text-slate-400 w-2/5">Improvement needed</th>
+                      <th className="pb-3 px-4 text-sm font-semibold text-slate-400 min-w-[200px] w-1/4">Topic</th>
+                      <th className="pb-3 px-4 text-sm font-semibold text-slate-400 min-w-[120px] w-28">Current</th>
+                      <th className="pb-3 px-4 text-sm font-semibold text-slate-400 w-1/3">Kya aata hai (Knowledge)</th>
+                      <th className="pb-3 px-4 text-sm font-semibold text-slate-400 w-1/3">Improvement needed</th>
                       <th className="pb-3 px-4 w-12"></th>
                     </tr>
                   </thead>
@@ -353,12 +353,11 @@ export default function PrepTrackerPage() {
                     {(feedback[selectedDay] || []).map((row) => (
                       <tr key={row.id} className="group hover:bg-slate-800/20 transition-colors">
                         <td className="p-2 align-top">
-                          <input 
-                            type="text" 
+                          <textarea 
                             value={row.topic} 
                             onChange={(e) => handleUpdateRow(selectedDay, row.id, "topic", e.target.value)}
                             placeholder="e.g. GIL"
-                            className="w-full bg-transparent border border-transparent hover:border-slate-700 focus:border-blue-500 rounded px-3 py-2 text-sm text-slate-200 outline-none transition-colors font-medium"
+                            className="w-full bg-transparent border border-transparent hover:border-slate-700 focus:border-blue-500 rounded px-3 py-2 text-sm text-slate-200 outline-none transition-colors font-medium resize-none min-h-[60px]"
                           />
                         </td>
                         <td className="p-2 align-top">
