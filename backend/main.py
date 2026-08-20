@@ -505,6 +505,87 @@ def verify_payment(req: VerifyPayment, current_user: User = Depends(get_current_
     
     return {"message": "Payment verified", "uploads_remaining": uploads_left}
 
+class QuizGenerateRequest(BaseModel):
+    topic: str
+    knows: str
+
+class QAPair(BaseModel):
+    q: str
+    a: str
+
+class QuizEvaluateRequest(BaseModel):
+    topic: str
+    qa_pairs: List[QAPair]
+
+@app.post("/api/generate-quiz")
+def generate_quiz(req: QuizGenerateRequest, current_user: User = Depends(get_current_user)):
+    db = SessionLocal()
+    user = db.query(User).filter(User.id == current_user.id).first()
+    gemini_key = user.gemini_key or os.environ.get("GEMINI_API_KEY")
+    db.close()
+    
+    if not gemini_key:
+        raise HTTPException(status_code=400, detail="Missing Gemini API Key in Settings")
+        
+    prompt = f"""
+    You are an expert technical interviewer. The candidate claims to know the following about the topic '{req.topic}':
+    "{req.knows}"
+    
+    Generate exactly 3 rapid-fire, highly specific interview questions to test their true understanding of this topic and their stated knowledge. The questions should be challenging but answerable in 1-2 sentences. 
+    You must support Hinglish, Hindi, and English. Keep the tone conversational.
+    
+    Return a valid JSON array of strings (the 3 questions). Do not include any other text or markdown formatting outside the JSON array.
+    Example: ["Question 1", "Question 2", "Question 3"]
+    """
+    
+    try:
+        raw = call_gemini(prompt, gemini_key)
+        clean = raw.strip()
+        if clean.startswith("```json"): clean = clean[7:-3]
+        elif clean.startswith("```"): clean = clean[3:-3]
+        questions = json.loads(clean)
+        return {"questions": questions[:3]}
+    except Exception as e:
+        print(f"Quiz Generate Error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate quiz")
+
+@app.post("/api/evaluate-quiz")
+def evaluate_quiz(req: QuizEvaluateRequest, current_user: User = Depends(get_current_user)):
+    db = SessionLocal()
+    user = db.query(User).filter(User.id == current_user.id).first()
+    gemini_key = user.gemini_key or os.environ.get("GEMINI_API_KEY")
+    db.close()
+    
+    if not gemini_key:
+        raise HTTPException(status_code=400, detail="Missing Gemini API Key in Settings")
+        
+    qa_text = "\n".join([f"Q: {pair.q}\nA: {pair.a}" for pair in req.qa_pairs])
+    prompt = f"""
+    You are a strict technical interviewer evaluating a candidate on the topic '{req.topic}'.
+    The candidate has provided the following answers (they may be in English, Hindi, or Hinglish):
+    
+    {qa_text}
+    
+    Evaluate their answers. Are they correct and do they show true mastery of the topic?
+    Return a JSON object with exactly two keys:
+    1. "passed": boolean (true if they demonstrated mastery, false if their answers are wrong, vague, or show lack of understanding).
+    2. "feedback": string (A very brief 1-2 sentence feedback on what they got wrong or need to improve. If they passed, just say 'Perfect!'). You must respond in the same language they used (e.g. Hinglish).
+    
+    Do not include any text outside the JSON object.
+    Example: {{"passed": false, "feedback": "Your explanation of XYZ is slightly wrong because..."}}
+    """
+    
+    try:
+        raw = call_gemini(prompt, gemini_key)
+        clean = raw.strip()
+        if clean.startswith("```json"): clean = clean[7:-3]
+        elif clean.startswith("```"): clean = clean[3:-3]
+        data = json.loads(clean)
+        return {"passed": data.get("passed", False), "feedback": data.get("feedback", "Error evaluating.")}
+    except Exception as e:
+        print(f"Quiz Evaluate Error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to evaluate quiz")
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
