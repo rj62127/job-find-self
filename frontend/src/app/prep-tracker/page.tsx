@@ -112,6 +112,8 @@ export default function PrepTrackerPage() {
   // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
+  const [bulkMarkdown, setBulkMarkdown] = useState("");
 
   useEffect(() => {
     try {
@@ -162,6 +164,44 @@ export default function PrepTrackerPage() {
     const nextFeedback = { ...feedback, [dayId]: [...(feedback[dayId] || []), newRow] };
     setFeedback(nextFeedback);
     persist(checked, nextFeedback, globalNotes);
+  };
+
+  const handleBulkImport = (dayId: string) => {
+    if (!bulkMarkdown.trim()) return;
+    
+    const lines = bulkMarkdown.split('\n');
+    const newRows: FeedbackRow[] = [];
+    
+    let isParsing = false;
+    for (const line of lines) {
+      if (line.includes('|---')) {
+        isParsing = true;
+        continue;
+      }
+      if (!isParsing && line.includes('| Topic')) {
+        continue; 
+      }
+      
+      const parts = line.split('|').map(p => p.trim()).filter((_, i, arr) => i > 0 && i < arr.length - 1);
+      if (parts.length >= 4) {
+        newRows.push({
+          id: Date.now().toString() + Math.random().toString(),
+          topic: parts[0].replace(/\*\*/g, '').trim(),
+          current: parts[1],
+          knows: parts[2],
+          improvement: parts[3]
+        });
+      }
+    }
+    
+    if (newRows.length > 0) {
+      const nextFeedback = { ...feedback, [dayId]: [...(feedback[dayId] || []), ...newRows] };
+      setFeedback(nextFeedback);
+      persist(checked, nextFeedback, globalNotes);
+    }
+    
+    setBulkMarkdown("");
+    setIsBulkImportOpen(false);
   };
   
   const handleUpdateRow = (dayId: string, rowId: string, field: keyof FeedbackRow, value: string) => {
@@ -366,12 +406,36 @@ export default function PrepTrackerPage() {
                   </div>
                 )}
                 
-                <button 
-                  onClick={() => handleAddRow(selectedDay)}
-                  className="mt-4 flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300 font-medium px-4 py-2 hover:bg-blue-500/10 rounded-lg transition-colors"
-                >
-                  <Plus className="w-4 h-4" /> Add Topic
-                </button>
+                <div className="flex gap-4">
+                  <button 
+                    onClick={() => handleAddRow(selectedDay)}
+                    className="mt-4 flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300 font-medium px-4 py-2 hover:bg-blue-500/10 rounded-lg transition-colors"
+                  >
+                    <Plus className="w-4 h-4" /> Add Topic
+                  </button>
+                  <button 
+                    onClick={() => setIsBulkImportOpen(!isBulkImportOpen)}
+                    className="mt-4 flex items-center gap-2 text-sm text-purple-400 hover:text-purple-300 font-medium px-4 py-2 hover:bg-purple-500/10 rounded-lg transition-colors"
+                  >
+                    Bulk Import (Markdown)
+                  </button>
+                </div>
+                
+                {isBulkImportOpen && (
+                  <div className="mt-4 p-4 border border-slate-700 bg-slate-800/50 rounded-xl animate-in fade-in slide-in-from-top-4 duration-200">
+                    <p className="text-sm text-slate-300 mb-2">Paste your markdown table here (must have 4 columns):</p>
+                    <textarea 
+                      className="w-full h-32 bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm text-slate-300 font-mono focus:border-purple-500 outline-none resize-none"
+                      placeholder={`| Topic | Current | Kya aata hai | Improvement needed |\n|---|---|---|---|\n| GIL | 6.5/10 | Basic concept... | Internals... |`}
+                      value={bulkMarkdown}
+                      onChange={(e) => setBulkMarkdown(e.target.value)}
+                    />
+                    <div className="mt-3 flex justify-end gap-2">
+                      <button onClick={() => setIsBulkImportOpen(false)} className="px-4 py-1.5 text-sm text-slate-400 hover:text-white transition-colors">Cancel</button>
+                      <button onClick={() => handleBulkImport(selectedDay)} className="px-4 py-1.5 text-sm bg-purple-600 hover:bg-purple-500 text-white font-medium rounded transition-colors">Parse & Add Rows</button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
             
