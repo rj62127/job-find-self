@@ -121,7 +121,19 @@ export default function PrepTrackerPage() {
       if (raw) {
         const data = JSON.parse(raw);
         setChecked(data.checked || {});
-        setFeedback(data.feedback || {});
+        
+        // Clean up existing backticks
+        const loadedFeedback = data.feedback || {};
+        const cleanedFeedback: typeof loadedFeedback = {};
+        for (const [day, rows] of Object.entries(loadedFeedback)) {
+          cleanedFeedback[day] = (rows as FeedbackRow[]).map(r => ({
+            ...r,
+            knows: r.knows.replace(/`/g, ''),
+            improvement: r.improvement.replace(/`/g, '')
+          }));
+        }
+        setFeedback(cleanedFeedback);
+        
         setGlobalNotes(data.globalNotes || "");
       }
     } catch (e) {
@@ -186,10 +198,10 @@ export default function PrepTrackerPage() {
       if (parts.length >= 4) {
         newRows.push({
           id: Date.now().toString() + Math.random().toString(),
-          topic: parts[0].replace(/\*\*/g, '').trim(),
-          current: parts[1],
-          knows: parts[2],
-          improvement: parts[3]
+          topic: parts[0].replace(/[*`]/g, '').trim(),
+          current: parts[1].replace(/[*`]/g, '').trim(),
+          knows: parts[2].replace(/`/g, '').trim(),
+          improvement: parts[3].replace(/`/g, '').trim()
         });
       }
     }
