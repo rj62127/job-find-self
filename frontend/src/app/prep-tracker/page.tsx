@@ -117,6 +117,15 @@ export default function PrepTrackerPage() {
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
   const [bulkMarkdown, setBulkMarkdown] = useState("");
+  
+  // AI Quiz Modal State
+  const [aiQuizOpen, setAiQuizOpen] = useState(false);
+  const [quizLoading, setQuizLoading] = useState(false);
+  const [quizRow, setQuizRow] = useState<{dayId: string, row: FeedbackRow} | null>(null);
+  const [quizQuestions, setQuizQuestions] = useState<string[]>([]);
+  const [quizAnswers, setQuizAnswers] = useState<string[]>([]);
+  const [evaluating, setEvaluating] = useState(false);
+  const [aiFeedback, setAiFeedback] = useState<{passed: boolean, msg: string} | null>(null);
 
   useEffect(() => {
     try {
@@ -181,21 +190,76 @@ export default function PrepTrackerPage() {
     persist(checked, nextFeedback, globalNotes);
   };
 
-  const handleMarkComplete = async (dayId: string, rowId: string) => {
+  const handleMarkComplete = async (dayId: string, row: FeedbackRow) => {
+    // Open AI Quiz instead of marking directly
+    setQuizRow({dayId, row});
+    setAiQuizOpen(true);
+    setQuizLoading(true);
+    setQuizQuestions([]);
+    setQuizAnswers(["", "", ""]);
+    setAiFeedback(null);
+    
+    try {
+      const res = await fetch("/api/generate-quiz", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ topic: row.topic, knows: row.knows || "I have basic knowledge." })
+      });
+      if (!res.ok) throw new Error("Failed to generate quiz");
+      const data = await res.json();
+      setQuizQuestions(data.questions || []);
+    } catch (e) {
+      setAiFeedback({ passed: false, msg: "Failed to connect to AI. You can Force Complete." });
+    }
+    setQuizLoading(false);
+  };
+
+  const handleEvaluateQuiz = async () => {
+    if (!quizRow || quizQuestions.length === 0) return;
+    setEvaluating(true);
+    
+    try {
+      const pairs = quizQuestions.map((q, i) => ({ q, a: quizAnswers[i] || "I don't know" }));
+      const res = await fetch("/api/evaluate-quiz", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ topic: quizRow.row.topic, qa_pairs: pairs })
+      });
+      if (!res.ok) throw new Error("Failed");
+      const data = await res.json();
+      
+      setAiFeedback({ passed: data.passed, msg: data.feedback });
+      
+      if (data.passed) {
+        // AI passed, automatically move to vault after 2 seconds
+        setTimeout(() => {
+          forceMarkComplete(quizRow.dayId, quizRow.row.id);
+          setAiQuizOpen(false);
+        }, 2000);
+      } else {
+        // AI failed, update improvement needed automatically
+        const currentImprovement = quizRow.row.improvement;
+        const newImprovement = (currentImprovement ? currentImprovement + "\n\nAI Feedback: " : "AI Feedback: ") + data.feedback;
+        handleUpdateRow(quizRow.dayId, quizRow.row.id, "improvement", newImprovement);
+      }
+    } catch (e) {
+      setAiFeedback({ passed: false, msg: "Error evaluating. Please try again or Force Complete." });
+    }
+    setEvaluating(false);
+  };
+
+  const forceMarkComplete = async (dayId: string, rowId: string) => {
     const rows = feedback[dayId] || [];
     let locationStr = "Local Device";
     try {
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
       locationStr = tz;
-      // Optional: Add IP fetch for precise city
       const res = await fetch("https://ipapi.co/json/");
       const data = await res.json();
       if (data && data.city && data.country_name) {
         locationStr = `${data.city}, ${data.country_name}`;
       }
-    } catch (e) {
-      // Fallback
-    }
+    } catch (e) { }
     
     const now = new Date().toLocaleString();
     const updatedRows = rows.map(r => 
@@ -204,6 +268,7 @@ export default function PrepTrackerPage() {
     const nextFeedback = { ...feedback, [dayId]: updatedRows };
     setFeedback(nextFeedback);
     persist(checked, nextFeedback, globalNotes);
+    setAiQuizOpen(false);
   };
 
   const handleBulkImport = (dayId: string) => {
@@ -457,9 +522,9 @@ export default function PrepTrackerPage() {
                       <tr key={row.id} className="group hover:bg-slate-800/20 transition-colors">
                         <td className="p-2 align-top relative">
                           <button 
-                            onClick={() => handleMarkComplete(selectedDay, row.id)}
+                            onClick={() => handleMarkComplete(selectedDay, row)}
                             className="absolute -left-6 top-4 w-5 h-5 rounded border border-slate-600 hover:border-emerald-500 hover:bg-emerald-500/20 flex items-center justify-center transition-colors group/check"
-                            title="Mark as Mastered (Move to Vault)"
+                            title="Verify Mastery with AI"
                           >
                             <CheckSquare className="w-3 h-3 text-emerald-500 opacity-0 group-hover/check:opacity-100" />
                           </button>
@@ -555,6 +620,85 @@ export default function PrepTrackerPage() {
               >
                 Done
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AI QUIZ MODAL */}
+      {aiQuizOpen && quizRow && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-3xl flex flex-col shadow-2xl overflow-hidden relative">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-600/10 rounded-full blur-3xl pointer-events-none"></div>
+            
+            <div className="flex items-center justify-between p-6 border-b border-slate-800 relative z-10">
+              <div>
+                <h2 className="text-2xl font-bold text-white flex items-center gap-3">
+                  <BrainCircuit className="w-6 h-6 text-emerald-400" />
+                  AI Mastery Gatekeeper
+                </h2>
+                <p className="text-slate-400 mt-1">Topic: <span className="font-semibold text-slate-200">{quizRow.row.topic}</span></p>
+              </div>
+              <button onClick={() => setAiQuizOpen(false)} className="p-2 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white transition-colors">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            
+            <div className="p-6 relative z-10 max-h-[60vh] overflow-y-auto">
+              {quizLoading ? (
+                <div className="flex flex-col items-center justify-center py-12 text-slate-400">
+                  <Loader2 className="w-10 h-10 animate-spin text-emerald-500 mb-4" />
+                  <p>AI is generating 3 rapid-fire questions to test your knowledge...</p>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {quizQuestions.length > 0 && quizQuestions.map((q, idx) => (
+                    <div key={idx} className="bg-slate-800/50 p-4 rounded-xl border border-slate-700">
+                      <p className="font-medium text-slate-200 mb-3"><span className="text-emerald-400 mr-2">Q{idx+1}.</span> {q}</p>
+                      <textarea
+                        className="w-full h-20 bg-slate-900 border border-slate-700 focus:border-emerald-500 rounded-lg p-3 text-sm text-slate-300 resize-none outline-none transition-colors"
+                        placeholder="Type your answer here (Hinglish/Hindi/English works)..."
+                        value={quizAnswers[idx] || ""}
+                        onChange={(e) => {
+                          const newAns = [...quizAnswers];
+                          newAns[idx] = e.target.value;
+                          setQuizAnswers(newAns);
+                        }}
+                      />
+                    </div>
+                  ))}
+                  
+                  {aiFeedback && (
+                    <div className={`p-4 rounded-xl border ${aiFeedback.passed ? 'bg-emerald-900/20 border-emerald-500/50 text-emerald-300' : 'bg-red-900/20 border-red-500/50 text-red-300'}`}>
+                      <div className="font-bold mb-1 flex items-center gap-2">
+                        {aiFeedback.passed ? <CheckSquare className="w-5 h-5" /> : <X className="w-5 h-5" />}
+                        {aiFeedback.passed ? 'Mastery Verified!' : 'Needs Improvement'}
+                      </div>
+                      <p className="text-sm opacity-90">{aiFeedback.msg}</p>
+                      {!aiFeedback.passed && <p className="text-xs mt-2 opacity-75">This feedback has been added to your Improvement Notes automatically.</p>}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            
+            <div className="p-6 border-t border-slate-800 bg-slate-900/80 flex items-center justify-between relative z-10">
+              <button 
+                onClick={() => forceMarkComplete(quizRow.dayId, quizRow.row.id)}
+                className="text-sm text-slate-500 hover:text-slate-300 underline underline-offset-2"
+              >
+                Force Complete (Bypass AI)
+              </button>
+              
+              {!aiFeedback?.passed && quizQuestions.length > 0 && (
+                <button 
+                  onClick={handleEvaluateQuiz}
+                  disabled={evaluating}
+                  className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-semibold shadow-lg shadow-emerald-500/20 transition-all flex items-center gap-2 disabled:opacity-70"
+                >
+                  {evaluating ? <><Loader2 className="w-4 h-4 animate-spin" /> Evaluating...</> : "Submit Answers"}
+                </button>
+              )}
             </div>
           </div>
         </div>
